@@ -1773,13 +1773,31 @@ function fbSetStatus(msg,color,connected){
   if(dot) dot.style.display=connected?'inline-block':'none';
 }
 
+function fbParseConfigSnippet(raw){
+  // Aceita: JSON puro OU o snippet completo do console Firebase
+  // (const firebaseConfig = {...}; com comentários, chaves sem aspas, etc.)
+  const start=raw.indexOf('{'), end=raw.lastIndexOf('}');
+  if(start===-1||end===-1||end<start) throw new Error('Não encontrei um objeto { ... } no texto colado.');
+  const objText=raw.slice(start,end+1);
+  try{ return JSON.parse(objText); }
+  catch(e1){
+    try{
+      // eslint-disable-next-line no-new-func
+      return new Function('"use strict"; return (' + objText + ');')();
+    }catch(e2){
+      throw new Error('Não consegui interpretar a configuração. Copie o objeto firebaseConfig completo.');
+    }
+  }
+}
+
 async function fbSaveConfigAndConnect(){
   const raw=document.getElementById('cfg-firebase-json').value.trim();
   const email=document.getElementById('cfg-email').value.trim();
   const pass=document.getElementById('cfg-password').value;
   if(!raw){ showToast('Cole a configuração do Firebase','error'); return; }
   let cfg;
-  try{ cfg=JSON.parse(raw); }catch(e){ showToast('JSON de configuração inválido','error'); return; }
+  try{ cfg=fbParseConfigSnippet(raw); }catch(e){ showToast(e.message,'error'); return; }
+  if(!cfg.apiKey || !cfg.projectId){ showToast('Configuração incompleta: faltam apiKey/projectId','error'); return; }
   localStorage.setItem('pdm_fb_config', JSON.stringify(cfg));
   if(email) localStorage.setItem('pdm_fb_email', email);
   fbSetStatus('Conectando...', '#f59e0b', false);
