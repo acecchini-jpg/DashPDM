@@ -2,11 +2,14 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v0.4</title>
+<title>PDM KPI Tracking v0.5</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
 :root,[data-theme="dark"]{--bg:#0f172a;--bg-card:#1e293b;--bg-input:#0a1120;--bg-row:#0d1526;--bg-hov:#1a2540;--border:#334155;--border-lt:#1e2e42;--nav:#1e293b;--tag:#0f172a;--tx:#e2e8f0;--tx2:#94a3b8;--tx3:#64748b;--shadow:0 4px 24px rgba(0,0,0,.45);}
@@ -85,7 +88,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v0.4</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v0.5</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -96,7 +99,8 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
     <button class="nav-tab" onclick="switchTab('importar')" id="tab-importar"><i class="fas fa-file-import" style="margin-right:5px"></i>Importar</button>
   </div>
   <div style="display:flex;gap:6px;padding-left:10px;flex-shrink:0">
-    <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="Tema"><i class="fas fa-moon" id="theme-icon"></i></button>
+    <button class="btn btn-ghost btn-sm" id="theme-btn" onclick="handleThemeBtnClick(event)" ontouchstart="fbStartLongPress()" ontouchend="fbCancelLongPress()" ontouchmove="fbCancelLongPress()" title="Tema (Shift+clique = Configurações)"><i class="fas fa-moon" id="theme-icon"></i></button>
+    <span id="fb-status-dot" style="display:none;width:7px;height:7px;border-radius:50%;background:#10b981;align-self:center;margin-left:-2px" title="Conectado à nuvem"></span>
     <button class="btn btn-ghost btn-sm" onclick="openResetModal()" title="Limpar"><i class="fas fa-trash-can"></i></button>
   </div>
 </div></nav>
@@ -452,6 +456,36 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
   <div id="day-popup-body" style="font-size:12px;color:var(--tx2);line-height:1.6"></div>
 </div>
 <!-- Toast -->
+<div class="modal-bg" id="modal-settings" style="display:none" onclick="if(event.target===this)closeModal('modal-settings')">
+  <div class="modal-box" style="padding:20px;max-width:560px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="font-size:14px;font-weight:700;color:var(--tx)"><i class="fas fa-gear" style="margin-right:6px"></i>Configurações — Nuvem (Firebase)</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-settings')"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div id="settings-status" style="font-size:12px;margin-bottom:12px;padding:8px 11px;border-radius:7px;background:var(--bg-row);border:1px solid var(--border);color:var(--tx2)">
+      <i class="fas fa-circle" style="font-size:7px;margin-right:6px;color:var(--tx3)"></i>Desconectado
+    </div>
+    <div style="margin-bottom:9px">
+      <label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">CONFIGURAÇÃO FIREBASE (JSON do console)</label>
+      <textarea class="inp" id="cfg-firebase-json" rows="5" style="font-family:monospace;font-size:11px;resize:vertical" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px">
+      <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">E-MAIL</label><input type="email" class="inp" id="cfg-email" autocomplete="username"></div>
+      <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">SENHA</label><input type="password" class="inp" id="cfg-password" autocomplete="current-password"></div>
+    </div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-primary btn-sm" onclick="fbSaveConfigAndConnect()"><i class="fas fa-plug"></i> Salvar e Conectar</button>
+      <button class="btn btn-ghost btn-sm" onclick="fbSyncNow()"><i class="fas fa-cloud-arrow-down"></i> Sincronizar agora</button>
+      <button class="btn btn-danger btn-sm" onclick="fbDisconnect()"><i class="fas fa-plug-circle-xmark"></i> Desconectar</button>
+    </div>
+    <div style="font-size:11px;color:var(--tx3);line-height:1.6;padding-top:10px;border-top:1px solid var(--border-lt)">
+      <i class="fas fa-circle-info" style="margin-right:4px"></i>
+      As credenciais ficam salvas apenas neste navegador. O app continua funcionando offline com os dados locais mesmo sem conexão com a nuvem.
+      <br><i class="fas fa-hand-pointer" style="margin-right:4px;margin-top:4px;display:inline-block"></i>
+      Acesso: Shift+clique no botão de tema (ou toque longo no celular).
+    </div>
+  </div>
+</div>
 <div id="toast" style="position:fixed;bottom:20px;right:20px;z-index:200;display:none">
   <div id="toast-inner" style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:9px;box-shadow:var(--shadow);min-width:230px">
     <i id="toast-icon" class="fas fa-check-circle" style="font-size:15px"></i>
@@ -1298,7 +1332,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v0.4_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v0.5_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1390,16 +1424,20 @@ function saveGerenteRecords(){
   if(!aid){showToast('Selecione uma área','error');return;}
   const inds=DB.indicadores.filter(i=>i.areaId===aid);
   let regs=DB.registros,saved=0,skip=0;
+  const pushBatch=[];
   inds.forEach(ind=>{
     const inp=document.getElementById('val-'+ind.id);if(!inp)return;
     const raw=inp.value.trim();if(!raw){skip++;return;}
     const val=isNaN(parseNum(raw))?raw:parseNum(raw);
     regs=regs.filter(r=>!(r.indicadorId===ind.id&&r.data===data));
-    regs.push({id:uid(),indicadorId:ind.id,data,valor:val,comentario:gerenteComments[ind.id]||''});
+    const novoReg={id:uid(),indicadorId:ind.id,data,valor:val,comentario:gerenteComments[ind.id]||''};
+    regs.push(novoReg);
+    pushBatch.push(novoReg);
     saved++;
   });
   DB.registros=regs;showToast(`${saved} registros salvos!${skip?` (${skip} em branco)`:''}`,'success');
   renderGerenteIndicadores();
+  fbPushRegistros(pushBatch);
 }
 
 // §10 CADASTRO
@@ -1462,10 +1500,12 @@ function openAreaModal(id){
 function saveArea(){
   const id=document.getElementById('modal-area-id').value,nome=document.getElementById('modal-area-nome').value.trim();
   if(!nome){showToast('Digite o nome','error');return;}
-  let areas=DB.areas;if(id)areas=areas.map(a=>a.id===id?{...a,nome}:a);else areas.push({id:uid(),nome});
+  const areaObj = id ? {id, nome} : {id:uid(), nome};
+  let areas=DB.areas;if(id)areas=areas.map(a=>a.id===id?{...a,nome}:a);else areas.push(areaObj);
   DB.areas=areas;closeModal('modal-area');renderCadastro();showToast('Área salva!','success');
+  fbPushArea(areaObj);
 }
-function deleteArea(id){if(!confirm('Remover área?'))return;DB.areas=DB.areas.filter(a=>a.id!==id);renderCadastro();showToast('Removida','success');}
+function deleteArea(id){if(!confirm('Remover área?'))return;DB.areas=DB.areas.filter(a=>a.id!==id);renderCadastro();showToast('Removida','success');fbDeleteDoc('areas',id);}
 function openIndicadorModal(id){
   const sel=document.getElementById('modal-ind-area');
   sel.innerHTML='<option value="">Selecione...</option>'+DB.areas.map(a=>`<option value="${a.id}">${a.nome}</option>`).join('');
@@ -1481,10 +1521,12 @@ function saveIndicador(){
   const pct=document.getElementById('modal-ind-pct').checked;
   const agr=document.getElementById('modal-ind-agr').value||'ultimo';
   if(!nome){showToast('Digite o nome','error');return;}
-  let inds=DB.indicadores;if(id)inds=inds.map(i=>i.id===id?{...i,nome,areaId:aid,unidadeMedida:un,tipoMeta:tipo,secundario:sec,percentual:pct,agregacao:agr}:i);else inds.push({id:uid(),areaId:aid,nome,unidadeMedida:un,tipoMeta:tipo,secundario:sec,percentual:pct,agregacao:agr});
+  const indObj = {id: id||uid(), areaId:aid, nome, unidadeMedida:un, tipoMeta:tipo, secundario:sec, percentual:pct, agregacao:agr};
+  let inds=DB.indicadores;if(id)inds=inds.map(i=>i.id===id?{...i,...indObj}:i);else inds.push(indObj);
   DB.indicadores=inds;closeModal('modal-ind');renderCadastro();showToast('Salvo!','success');
+  fbPushIndicador(indObj);
 }
-function deleteIndicador(id){if(!confirm('Remover?'))return;DB.indicadores=DB.indicadores.filter(i=>i.id!==id);DB.registros=DB.registros.filter(r=>r.indicadorId!==id);DB.objetivos=DB.objetivos.filter(o=>o.indicadorId!==id);renderCadastro();showToast('Removido','success');}
+function deleteIndicador(id){if(!confirm('Remover?'))return;DB.indicadores=DB.indicadores.filter(i=>i.id!==id);DB.registros=DB.registros.filter(r=>r.indicadorId!==id);DB.objetivos=DB.objetivos.filter(o=>o.indicadorId!==id);renderCadastro();showToast('Removido','success');fbDeleteDoc('indicadores',id);}
 function openObjetivoModal(){
   const indId=document.getElementById('obj-filter-ind')?.value;if(!indId){showToast('Selecione um indicador','error');return;}
   const ind=DB.indicadores.find(i=>i.id===indId);
@@ -1496,10 +1538,12 @@ function saveObjetivo(){
   const indId=document.getElementById('modal-obj-ind-id').value,raw=document.getElementById('modal-obj-valor').value.trim(),data=document.getElementById('modal-obj-data').value;
   if(!raw||!data){showToast('Preencha todos os campos','error');return;}
   const val=isNaN(parseNum(raw))?raw:parseNum(raw);
-  DB.objetivos=[...DB.objetivos,{id:uid(),indicadorId:indId,valor:val,dataInicio:data}];
+  const objObj={id:uid(),indicadorId:indId,valor:val,dataInicio:data};
+  DB.objetivos=[...DB.objetivos,objObj];
   closeModal('modal-obj');renderObjetivosList();showToast('Objetivo adicionado!','success');
+  fbPushObjetivo(objObj);
 }
-function deleteObjetivo(id){if(!confirm('Remover versão?'))return;DB.objetivos=DB.objetivos.filter(o=>o.id!==id);renderObjetivosList();showToast('Removido','success');}
+function deleteObjetivo(id){if(!confirm('Remover versão?'))return;DB.objetivos=DB.objetivos.filter(o=>o.id!==id);renderObjetivosList();showToast('Removido','success');fbDeleteDoc('objetivos',id);}
 
 // §11 GEMBA
 let pilaresState={};
@@ -1520,8 +1564,10 @@ function saveGemba(){
   const data=document.getElementById('gemba-data').value,areaNome=document.getElementById('gemba-area').value.trim(),obs=document.getElementById('gemba-obs').value.trim();
   if(!data||!areaNome){showToast('Data e local são obrigatórios','error');return;}
   PILARES.forEach(p=>{const el=document.getElementById('pilar-nota-'+p.key);if(el)pilaresState['nota_'+p.key]=el.value.trim();});
-  DB.gemba=[...DB.gemba,{id:uid(),data,areaNome,obs,pilares:{...pilaresState}}];
+  const gembaObj={id:uid(),data,areaNome,obs,pilares:{...pilaresState}};
+  DB.gemba=[...DB.gemba,gembaObj];
   document.getElementById('gemba-obs').value='';document.getElementById('gemba-area').value='';pilaresState={};renderPilares();renderGembaTimeline();initGemba();showToast('Gemba registrado!','success');
+  fbPushGemba(gembaObj);
 }
 function renderGembaTimeline(){
   const walks=DB.gemba.slice().sort((a,b)=>b.data.localeCompare(a.data)),el=document.getElementById('gemba-timeline');
@@ -1541,7 +1587,7 @@ function renderGembaTimeline(){
     </div>`;
   }).join('');
 }
-function deleteGemba(id){if(!confirm('Remover?'))return;DB.gemba=DB.gemba.filter(g=>g.id!==id);renderGembaTimeline();showToast('Removido','success');}
+function deleteGemba(id){if(!confirm('Remover?'))return;DB.gemba=DB.gemba.filter(g=>g.id!==id);renderGembaTimeline();showToast('Removido','success');fbDeleteDoc('gemba',id);}
 
 // §12 RELATÓRIO (Feature 3 — async, Feature 4 — meta col, Feature 5 — start day)
 function setCurrentWeek(){document.getElementById('r-semana').value=isoToWeekVal(todayISO());}
@@ -1694,4 +1740,213 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.cb-sec').forEach(cb=>{cb.checked=showSecundarios;});
   if(DB.areas.length===0&&DB.indicadores.length===0)switchTab('importar');else switchTab('dashboard');
 });
+
+// §FB FIREBASE CLOUD SYNC
+let fbApp=null, fbAuth=null, fbDb=null, fbUser=null, fbUnsubRegistros=null;
+let _longPressTimer=null, _longPressFired=false;
+
+function handleThemeBtnClick(e){
+  if(_longPressFired){ _longPressFired=false; return; } // swallow the click that follows a long-press
+  if(e.shiftKey){ e.preventDefault(); openSettingsModal(); return; }
+  toggleTheme();
+}
+function fbStartLongPress(){
+  _longPressFired=false;
+  _longPressTimer=setTimeout(()=>{ _longPressFired=true; openSettingsModal(); }, 600);
+}
+function fbCancelLongPress(){ if(_longPressTimer){clearTimeout(_longPressTimer);_longPressTimer=null;} }
+
+function openSettingsModal(){
+  const cfg=fbLoadConfig();
+  if(cfg) document.getElementById('cfg-firebase-json').value=JSON.stringify(cfg,null,2);
+  const email=localStorage.getItem('pdm_fb_email')||'';
+  if(email) document.getElementById('cfg-email').value=email;
+  document.getElementById('modal-settings').style.display='flex';
+}
+
+function fbLoadConfig(){ try{return JSON.parse(localStorage.getItem('pdm_fb_config')||'null');}catch{return null;} }
+
+function fbSetStatus(msg,color,connected){
+  const el=document.getElementById('settings-status'); if(!el)return;
+  el.innerHTML=`<i class="fas fa-circle" style="font-size:7px;margin-right:6px;color:${color||'var(--tx3)'}"></i>${msg}`;
+  const dot=document.getElementById('fb-status-dot');
+  if(dot) dot.style.display=connected?'inline-block':'none';
+}
+
+async function fbSaveConfigAndConnect(){
+  const raw=document.getElementById('cfg-firebase-json').value.trim();
+  const email=document.getElementById('cfg-email').value.trim();
+  const pass=document.getElementById('cfg-password').value;
+  if(!raw){ showToast('Cole a configuração do Firebase','error'); return; }
+  let cfg;
+  try{ cfg=JSON.parse(raw); }catch(e){ showToast('JSON de configuração inválido','error'); return; }
+  localStorage.setItem('pdm_fb_config', JSON.stringify(cfg));
+  if(email) localStorage.setItem('pdm_fb_email', email);
+  fbSetStatus('Conectando...', '#f59e0b', false);
+  try{
+    await fbConnect(cfg, email, pass);
+  }catch(err){
+    fbSetStatus('Erro: '+err.message, '#ef4444', false);
+    showToast('Erro ao conectar: '+err.message,'error');
+  }
+}
+
+async function fbConnect(cfg, email, pass){
+  if(typeof firebase==='undefined') throw new Error('SDK do Firebase não carregado (verifique sua conexão)');
+  if(!fbApp){ fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg); }
+  fbAuth = firebase.auth();
+  fbDb = firebase.firestore();
+  if(email && pass){
+    let cred;
+    try{
+      cred = await fbAuth.signInWithEmailAndPassword(email, pass);
+    }catch(err){
+      if(err.code==='auth/user-not-found' || err.code==='auth/invalid-credential'){
+        cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
+      } else { throw err; }
+    }
+    fbUser = cred.user;
+  }
+  fbSetStatus('Conectado'+(fbUser?' — '+fbUser.email:''), '#10b981', true);
+  showToast('Conectado ao Firebase!','success');
+  await fbSyncNow();
+  fbStartRealtimeSync();
+}
+
+function fbDisconnect(){
+  if(fbUnsubRegistros){ fbUnsubRegistros(); fbUnsubRegistros=null; }
+  if(fbAuth) fbAuth.signOut().catch(()=>{});
+  fbUser=null; fbApp=null; fbDb=null; fbAuth=null;
+  fbSetStatus('Desconectado', 'var(--tx3)', false);
+  showToast('Desconectado da nuvem','success');
+}
+
+function fbLastNMonths(n){
+  const out=[]; const now=new Date();
+  for(let i=0;i<n;i++){
+    const dt=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    out.push(`${dt.getFullYear()}-${padM(dt.getMonth()+1)}`);
+  }
+  return out;
+}
+
+// Pull: areas/indicadores/objetivos/gemba (full, low volume) + registros dos últimos 3 meses (bucketed)
+async function fbSyncNow(){
+  if(!fbDb){ showToast('Conecte-se primeiro (Salvar e Conectar)','error'); return; }
+  fbSetStatus('Sincronizando...', '#f59e0b', true);
+  try{
+    const [areasSnap, indsSnap, objsSnap, gembaSnap] = await Promise.all([
+      fbDb.collection('areas').get(),
+      fbDb.collection('indicadores').get(),
+      fbDb.collection('objetivos').get(),
+      fbDb.collection('gemba').get()
+    ]);
+    const areas = areasSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    const inds  = indsSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    const objs  = objsSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    const gemba = gembaSnap.docs.map(d=>({id:d.id, ...d.data()}));
+
+    const months = fbLastNMonths(3);
+    const regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
+    const registros = [];
+    regBuckets.docs.forEach(doc=>{
+      const data=doc.data(); const indId=data.indicadorId; const dias=data.dias||{};
+      Object.keys(dias).forEach(dd=>{
+        const entry=dias[dd];
+        registros.push({id:`${indId}_${data.anoMes}-${dd}`, indicadorId:indId, data:`${data.anoMes}-${dd}`, valor:entry.v, comentario:entry.c||''});
+      });
+    });
+
+    // Mantém histórico local de meses fora da janela sincronizada; substitui os 3 meses recentes pela nuvem
+    const localOlder = DB.registros.filter(r => !months.includes(r.data.slice(0,7)));
+    if(areas.length) DB.areas = areas;
+    if(inds.length)  DB.indicadores = inds;
+    if(objs.length)  DB.objetivos = objs;
+    if(gemba.length) DB.gemba = gemba;
+    DB.registros = [...localOlder, ...registros];
+
+    fbSetStatus('Sincronizado — '+new Date().toLocaleTimeString('pt-BR'), '#10b981', true);
+    showToast('Dados sincronizados com a nuvem!','success');
+    const at=document.querySelector('.nav-tab.active')?.id?.replace('tab-','');
+    if(at==='dashboard') renderDashboard();
+    else if(at==='relatorio') renderRelatorio();
+    else if(at==='gerente') renderGerenteIndicadores();
+    else if(at==='cadastro') renderCadastro();
+    else if(at==='gemba') initGemba();
+  }catch(err){
+    fbSetStatus('Erro na sincronização: '+err.message, '#ef4444', true);
+    showToast('Erro ao sincronizar: '+err.message,'error');
+  }
+}
+
+// Real-time: só o mês corrente, refletindo edições dos outros usuários automaticamente
+function fbStartRealtimeSync(){
+  if(!fbDb) return;
+  if(fbUnsubRegistros) fbUnsubRegistros();
+  const curMonth = `${new Date().getFullYear()}-${padM(new Date().getMonth()+1)}`;
+  fbUnsubRegistros = fbDb.collection('registros').where('anoMes','==',curMonth)
+    .onSnapshot(snap=>{
+      snap.docChanges().forEach(change=>{
+        if(change.type==='removed') return;
+        const data=change.doc.data(); const indId=data.indicadorId; const dias=data.dias||{};
+        DB.registros = DB.registros.filter(r=>!(r.indicadorId===indId && r.data.slice(0,7)===curMonth));
+        Object.keys(dias).forEach(dd=>{
+          const entry=dias[dd];
+          DB.registros.push({id:`${indId}_${curMonth}-${dd}`, indicadorId:indId, data:`${curMonth}-${dd}`, valor:entry.v, comentario:entry.c||''});
+        });
+      });
+      const at=document.querySelector('.nav-tab.active')?.id?.replace('tab-','');
+      if(at==='dashboard') renderDashboard();
+    }, err=>{ console.warn('Firebase realtime sync:', err.message); });
+}
+
+// Push helpers — chamados a partir das funções de save/delete já existentes.
+// "fire and forget": nunca bloqueiam o fluxo local; falhas apenas avisam via toast.
+function fbPushArea(area){ if(!fbDb) return; fbDb.collection('areas').doc(area.id).set(area).catch(e=>console.warn('fbPushArea',e)); }
+function fbPushIndicador(ind){ if(!fbDb) return; fbDb.collection('indicadores').doc(ind.id).set(ind).catch(e=>console.warn('fbPushIndicador',e)); }
+function fbPushObjetivo(obj){ if(!fbDb) return; fbDb.collection('objetivos').doc(obj.id).set(obj).catch(e=>console.warn('fbPushObjetivo',e)); }
+function fbPushGemba(g){ if(!fbDb) return; fbDb.collection('gemba').doc(g.id).set(g).catch(e=>console.warn('fbPushGemba',e)); }
+function fbDeleteDoc(col,id){ if(!fbDb) return; fbDb.collection(col).doc(id).delete().catch(e=>console.warn('fbDeleteDoc',e)); }
+
+// Push de registros: agrupa por indicador+mês e grava só os dias alterados (dot-notation, merge:true)
+function fbPushRegistros(regs){
+  if(!fbDb || !regs.length) return;
+  const byBucket = {};
+  regs.forEach(r=>{
+    const anoMes = r.data.slice(0,7), dd = r.data.slice(8,10);
+    const key = `${r.indicadorId}_${anoMes}`;
+    if(!byBucket[key]) byBucket[key] = {indicadorId:r.indicadorId, anoMes, dias:{}};
+    byBucket[key].dias[dd] = {v:r.valor, c:r.comentario||''};
+  });
+  Object.keys(byBucket).forEach(key=>{
+    const b=byBucket[key];
+    const payload={indicadorId:b.indicadorId, anoMes:b.anoMes};
+    Object.keys(b.dias).forEach(dd=>{ payload['dias.'+dd]=b.dias[dd]; });
+    fbDb.collection('registros').doc(key).set(payload,{merge:true}).catch(e=>console.warn('fbPushRegistros',e));
+  });
+}
+
+// Reconecta automaticamente se já houver config salva
+(function fbAutoConnect(){
+  const cfg=fbLoadConfig();
+  const email=localStorage.getItem('pdm_fb_email');
+  if(!cfg) return;
+  // Tenta conectar silenciosamente sem senha (mantém sessão anônima se já havia login persistido pelo SDK)
+  setTimeout(async ()=>{
+    try{
+      if(typeof firebase==='undefined') return;
+      fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
+      fbAuth = firebase.auth();
+      fbDb = firebase.firestore();
+      fbAuth.onAuthStateChanged(user=>{
+        if(user){
+          fbUser=user;
+          fbSetStatus('Conectado — '+user.email, '#10b981', true);
+          fbSyncNow(); fbStartRealtimeSync();
+        }
+      });
+    }catch(e){ console.warn('fbAutoConnect', e); }
+  }, 300);
+})();
+
 </script></body></html>
