@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v1.1</title>
+<title>PDM KPI Tracking v1.2</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -84,6 +84,7 @@ select.inp option{background:var(--bg-card);color:var(--tx)}
 @keyframes spin{to{transform:rotate(360deg)}}
 input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webkit-calendar-picker-indicator{filter:invert(.5) sepia(1) saturate(2) hue-rotate(200deg);cursor:pointer}
 @media(max-width:768px){#charts-dual-grid{grid-template-columns:1fr!important}#cad-grid{grid-template-columns:1fr!important}#gemba-grid{grid-template-columns:1fr!important}}
+@media(max-width:400px){#stats-strip{grid-template-columns:1fr!important}}
 </style></head><body>
 <!-- LOGIN GATE — shown until Firebase auth succeeds -->
 <div id="login-gate" style="position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px">
@@ -113,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.1</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.2</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -190,29 +191,29 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
   <!-- Resumo por área -->
   <div id="dash-resumo-area" style="display:none;margin-bottom:14px"></div>
 
-  <!-- Detail records + Stats sidebar -->
-  <div style="display:grid;grid-template-columns:1fr 155px;gap:12px;align-items:start;margin-bottom:14px">
-    <!-- Left: detail records card -->
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <h3 style="font-size:13px;font-weight:700;color:var(--tx)" id="detail-title">Registros Detalhados</h3>
-          <span id="detail-date-badge" style="display:none;font-size:11px;background:#1d4ed822;color:#60a5fa;border:1px solid #1d4ed855;border-radius:20px;padding:2px 9px">
-            <i class="fas fa-calendar" style="margin-right:3px"></i><span id="detail-date-label"></span>
-            <button onclick="clearDetailDate()" style="background:none;border:none;color:#60a5fa;cursor:pointer;margin-left:4px;font-size:11px">✕</button>
-          </span>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span id="dash-table-count" style="font-size:11px;color:var(--tx3)"></span>
-          <button class="btn btn-ghost btn-sm" onclick="exportCSV()"><i class="fas fa-download"></i> CSV</button>
-        </div>
-      </div>
-      <div id="dash-tbody" style="padding:0"></div>
-    </div>
-    <!-- Right: Verde / Vermelho / Aderência stats -->
-    <div id="stats-strip" style="display:flex;flex-direction:column;gap:7px"></div>
+  <!-- Stats: Verde / Vermelho / Aderência — horizontal, com legenda do filtro atual -->
+  <div class="card" style="padding:12px 14px;margin-bottom:14px">
+    <div id="stats-legend" style="font-size:11px;color:var(--tx3);margin-bottom:9px"></div>
+    <div id="stats-strip" style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px"></div>
   </div>
 
+  <!-- Registros Detalhados — largura total -->
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <h3 style="font-size:13px;font-weight:700;color:var(--tx)" id="detail-title">Registros Detalhados</h3>
+        <span id="detail-date-badge" style="display:none;font-size:11px;background:#1d4ed822;color:#60a5fa;border:1px solid #1d4ed855;border-radius:20px;padding:2px 9px">
+          <i class="fas fa-calendar" style="margin-right:3px"></i><span id="detail-date-label"></span>
+          <button onclick="clearDetailDate()" style="background:none;border:none;color:#60a5fa;cursor:pointer;margin-left:4px;font-size:11px">✕</button>
+        </span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span id="dash-table-count" style="font-size:11px;color:var(--tx3)"></span>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()"><i class="fas fa-download"></i> CSV</button>
+      </div>
+    </div>
+    <div id="dash-tbody" style="padding:0"></div>
+  </div>
 
 </div>
 
@@ -980,24 +981,37 @@ function renderDashboard(){
   const sparkInds=getActiveInds(aid?DB.indicadores.filter(i=>i.areaId===aid):DB.indicadores);
   buildSparklineCards(sparkInds);
 
-  // Stats strip
+  // Stats strip — agora horizontal, com legenda dinâmica do filtro aplicado
   let ok=0,nok=0,nd=0;
   regs.forEach(r=>{const i=DB.indicadores.find(x=>x.id===r.indicadorId);if(!i)return;const m=getMetaParaData(i.id,r.data);const s=getStatus(i.tipoMeta,r.valor,m?m.valor:null);if(s==='ok')ok++;else if(s==='nok')nok++;else nd++;});
   const tot=ok+nok,ad=tot?Math.round(ok/tot*100):0;
-  // Stats sidebar: 3 vertical cards
+
+  // Legenda: monta descrição legível do filtro atual (Área / Indicador / Período)
+  const areaNomeLbl = aid ? (DB.areas.find(a=>a.id===aid)?.nome || 'Todas') : 'Todas';
+  const indNomeLbl  = iid ? (DB.indicadores.find(i=>i.id===iid)?.nome || 'Todos') : 'Todos';
+  const MES_NOMES=['Todos','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const mesLbl = MES_NOMES[parseInt(mes)] || 'Todos';
+  const anoLbl = ano!=='0' ? ano : 'Todos';
+  document.getElementById('stats-legend').innerHTML =
+    `<i class="fas fa-filter" style="margin-right:5px"></i>Baseado no filtro atual: `+
+    `<b style="color:var(--tx2)">Área:</b> ${areaNomeLbl} · `+
+    `<b style="color:var(--tx2)">Indicador:</b> ${indNomeLbl} · `+
+    `<b style="color:var(--tx2)">Mês:</b> ${mesLbl} · `+
+    `<b style="color:var(--tx2)">Ano:</b> ${anoLbl}`;
+
   document.getElementById('stats-strip').innerHTML=`
     <div class="kpi-card" style="border-left-color:#10b981">
-      <div style="font-size:9px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px"><i class="fas fa-circle-check" style="color:#10b981;margin-right:4px"></i>Verde</div>
-      <div style="font-size:20px;font-weight:800;color:#10b981;line-height:1">${ok.toLocaleString('pt-BR')}</div>
+      <div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-circle-check" style="color:#10b981;margin-right:4px"></i>Verde</div>
+      <div style="font-size:24px;font-weight:800;color:#10b981;line-height:1">${ok.toLocaleString('pt-BR')}</div>
     </div>
     <div class="kpi-card" style="border-left-color:#ef4444">
-      <div style="font-size:9px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px"><i class="fas fa-circle-xmark" style="color:#ef4444;margin-right:4px"></i>Vermelho</div>
-      <div style="font-size:20px;font-weight:800;color:#ef4444;line-height:1">${nok.toLocaleString('pt-BR')}</div>
+      <div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-circle-xmark" style="color:#ef4444;margin-right:4px"></i>Vermelho</div>
+      <div style="font-size:24px;font-weight:800;color:#ef4444;line-height:1">${nok.toLocaleString('pt-BR')}</div>
     </div>
     <div class="kpi-card" style="border-left-color:#3b82f6">
-      <div style="font-size:9px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px"><i class="fas fa-bullseye" style="color:#3b82f6;margin-right:4px"></i>Aderência</div>
-      <div style="font-size:20px;font-weight:800;color:#3b82f6;line-height:1">${ad}%</div>
-      <div class="prog-bg" style="margin-top:4px"><div class="prog-fill" style="background:#3b82f6;width:${ad}%"></div></div>
+      <div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-bullseye" style="color:#3b82f6;margin-right:4px"></i>Aderência</div>
+      <div style="font-size:24px;font-weight:800;color:#3b82f6;line-height:1">${ad}%</div>
+      <div class="prog-bg" style="margin-top:5px"><div class="prog-fill" style="background:#3b82f6;width:${ad}%"></div></div>
     </div>`;
 
   // Charts — Feature 7
@@ -1057,6 +1071,12 @@ function buildSparklineCards(inds) {
   requestAnimationFrame(()=>{
     inds.forEach(ind=>{
       const canvas=document.getElementById('spark-c-'+ind.id); if(!canvas)return;
+      // FIX: elimina a corrida "Canvas is already in use" — se chamadas concorrentes de
+      // renderDashboard (ex: sincronizar + baixar histórico em sequência rápida) deixarem
+      // um gráfico Chart.js grudado nesse canvas específico, destrói antes de recriar,
+      // independente de qual chamada o criou originalmente.
+      const existing = Chart.getChart(canvas);
+      if(existing) existing.destroy();
       const regsInd=DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data)).slice(-14);
       if(!regsInd.length)return;
       const vals=regsInd.map(r=>{const v=parseNum(r.valor);return isNaN(v)?null:v;});
@@ -1339,7 +1359,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.1_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.2_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
