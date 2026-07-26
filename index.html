@@ -1790,6 +1790,11 @@ async function fbSyncNow(){
     console.log('[fbSyncNow] buscando registros para os meses:', months);
     const regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
     console.log('[fbSyncNow] documentos de registros encontrados:', regBuckets.size);
+    if(regBuckets.size>0){
+      const firstDoc = regBuckets.docs[0];
+      console.log('[fbSyncNow] DIAGNÓSTICO — doc.id do primeiro resultado:', firstDoc.id);
+      console.log('[fbSyncNow] DIAGNÓSTICO — doc.data() bruto do primeiro resultado:', JSON.stringify(firstDoc.data()));
+    }
     const registros = [];
     regBuckets.docs.forEach(doc=>{
       const data=doc.data(); const indId=data.indicadorId; const dias=data.dias||{};
