@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v0.9</title>
+<title>PDM KPI Tracking v1.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -113,7 +113,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v0.9</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.0</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -499,7 +499,7 @@ let showSecundarios=localStorage.getItem('pdm_show_sec')==='true';
 let chartAnual=null,chartMensal=null;
 const sparkCharts={};
 let currentChartIndId=null,currentChartAno=null,currentChartMes=null;
-let dashDetailDate=null,_lastRegs=[],_lastIndMap={},_importJustDone=false;
+let dashDetailDate=null,_lastRegs=[],_lastIndMap={},_importJustDone=false,_activeTab='dashboard';
 let _relRenderToken=0; // for async cancel
 
 // §2 UTILS
@@ -574,10 +574,9 @@ function getActiveInds(inds){return showSecundarios?inds:inds.filter(i=>!i.secun
 function toggleSecundarios(checked){
   showSecundarios=checked;localStorage.setItem('pdm_show_sec',checked);
   document.querySelectorAll('.cb-sec').forEach(cb=>{cb.checked=checked;});
-  const at=document.querySelector('.nav-tab.active')?.id?.replace('tab-','');
-  if(at==='dashboard')renderDashboard();
-  else if(at==='relatorio')renderRelatorio();
-  else if(at==='gerente')renderGerenteIndicadores();
+  if(_activeTab==='dashboard')renderDashboard();
+  else if(_activeTab==='relatorio')renderRelatorio();
+  else if(_activeTab==='gerente')renderGerenteIndicadores();
 }
 
 // Detect blue color in SheetJS — checks FONT/TEXT color first (per spec)
@@ -735,7 +734,11 @@ async function handleFileImport(file) {
     // Envia os dados importados para o Firebase (áreas/indicadores/objetivos completos + registros em lote)
     if (fbDb) {
       p(92, 'Enviando para a nuvem...');
+      // Pausa o listener em tempo real antes de escrever — evita que ele reconstrua
+      // o mês corrente a partir de um estado parcial enquanto o lote ainda está sendo gravado.
+      if (fbUnsubRegistros) { fbUnsubRegistros(); fbUnsubRegistros = null; }
       await fbPushImportedData(result);
+      if (fbUser) fbStartRealtimeSync(); // só reativa se ainda estiver autenticado
     }
 
     res.style.display='block';
@@ -1336,7 +1339,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v0.9_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.0_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1673,6 +1676,7 @@ function switchTab(tab){
   document.getElementById('pane-'+tab).classList.add('active');
   document.getElementById('tab-'+tab)?.classList.add('active'); // pode não existir na nav (abas ocultas)
   document.getElementById('day-popup').style.display='none';
+  _activeTab = tab; // fonte confiável do estado atual (não depende de classe CSS/DOM)
   if(tab==='dashboard')renderDashboard();
   if(tab==='gerente')initGerente();
   if(tab==='cadastro')renderCadastro();
@@ -1800,11 +1804,10 @@ async function fbSyncNow(){
 
     fbSetStatus('Sincronizado — '+new Date().toLocaleTimeString('pt-BR'), '#10b981', true);
     showToast('Dados sincronizados com a nuvem!','success');
-    const at=document.querySelector('.nav-tab.active')?.id?.replace('tab-','');
-    if(at==='dashboard') renderDashboard();
-    else if(at==='relatorio') renderRelatorio();
-    else if(at==='gerente') renderGerenteIndicadores();
-    else if(at==='cadastro') renderCadastro();
+    if(_activeTab==='dashboard') renderDashboard();
+    else if(_activeTab==='relatorio') renderRelatorio();
+    else if(_activeTab==='gerente') renderGerenteIndicadores();
+    else if(_activeTab==='cadastro') renderCadastro();
   }catch(err){
     fbSetStatus('Erro na sincronização: '+err.message, '#ef4444', true);
     showToast('Erro ao sincronizar: '+err.message,'error');
@@ -1824,6 +1827,13 @@ async function fbLoadFullHistory(){
   showToast('Baixando histórico completo...','success');
   try{
     const allBuckets = await fbDb.collection('registros').get();
+    // FIX: nunca apaga dados locais se a nuvem devolver vazio (rede instável, erro
+    // transitório, coleção ainda sem documentos etc.) — só substitui quando há
+    // realmente algo consistente vindo do servidor.
+    if(allBuckets.empty){
+      showToast('A nuvem não retornou nenhum documento — dados locais mantidos intactos.','error');
+      return;
+    }
     const registros = [];
     allBuckets.docs.forEach(doc=>{
       const data=doc.data(); const indId=data.indicadorId; const dias=data.dias||{};
@@ -1832,14 +1842,17 @@ async function fbLoadFullHistory(){
         registros.push({id:`${indId}_${data.anoMes}-${dd}`, indicadorId:indId, data:`${data.anoMes}-${dd}`, valor:entry.v, comentario:entry.c||''});
       });
     });
+    if(!registros.length){
+      showToast('Nenhum registro encontrado nos documentos da nuvem — dados locais mantidos intactos.','error');
+      return;
+    }
     DB.registros = registros; // substitui totalmente — essa é a fonte completa da nuvem
     showToast(`Histórico completo carregado! ${registros.length.toLocaleString('pt-BR')} registros.`,'success');
-    const at=document.querySelector('.nav-tab.active')?.id?.replace('tab-','');
-    if(at==='dashboard') renderDashboard();
-    else if(at==='relatorio') renderRelatorio();
-    else if(at==='gerente') renderGerenteIndicadores();
+    if(_activeTab==='dashboard') renderDashboard();
+    else if(_activeTab==='relatorio') renderRelatorio();
+    else if(_activeTab==='gerente') renderGerenteIndicadores();
   }catch(err){
-    showToast('Erro ao baixar histórico: '+err.message,'error');
+    showToast('Erro ao baixar histórico (dados locais preservados): '+err.message,'error');
   }finally{
     if(icon) icon.className=originalClass || 'fas fa-clock-rotate-left';
     if(btn) btn.disabled=false;
@@ -1862,8 +1875,7 @@ function fbStartRealtimeSync(){
           DB.registros.push({id:`${indId}_${curMonth}-${dd}`, indicadorId:indId, data:`${curMonth}-${dd}`, valor:entry.v, comentario:entry.c||''});
         });
       });
-      const at=document.querySelector('.nav-tab.active')?.id?.replace('tab-','');
-      if(at==='dashboard') renderDashboard();
+      if(_activeTab==='dashboard') renderDashboard();
     }, err=>{ console.warn('Firebase realtime sync:', err.message); });
 }
 
@@ -2000,13 +2012,24 @@ window.addEventListener('DOMContentLoaded',()=>{
     fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
     fbAuth = firebase.auth();
     fbDb = firebase.firestore();
-    fbAuth.onAuthStateChanged(user=>{
+    fbAuth.onAuthStateChanged(async user=>{
       if(user){
         fbUser=user;
         fbSetStatus('Conectado — '+user.email, '#10b981', true);
         const gateVisible = document.getElementById('login-gate').style.display !== 'none';
-        fbSyncNow(); fbStartRealtimeSync();
-        if(gateVisible) revealApp();
+        if(gateVisible){
+          // Sessão já ativa (reabertura/F5): mostra "sincronizando" e SÓ revela o app
+          // depois que os dados da nuvem chegarem — corrige a tela em branco pós-F5.
+          const btn=document.getElementById('login-btn');
+          if(btn){ btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Sincronizando dados...'; }
+          await fbSyncNow();
+          fbStartRealtimeSync();
+          revealApp();
+        } else {
+          // App já estava visível (ex: reconexão em segundo plano) — sincroniza sem bloquear a tela
+          await fbSyncNow();
+          fbStartRealtimeSync();
+        }
       }
       // se não há usuário, o gate simplesmente permanece visível (comportamento padrão inicial)
     });
