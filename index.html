@@ -1774,6 +1774,7 @@ function fbLastNMonths(n){
 async function fbSyncNow(){
   if(!fbDb){ showToast('Conecte-se primeiro (Salvar e Conectar)','error'); return; }
   fbSetStatus('Sincronizando...', '#f59e0b', true);
+  console.log('[fbSyncNow] iniciando... fbUser:', fbUser ? fbUser.email : 'NENHUM (não autenticado!)');
   try{
     const [areasSnap, indsSnap, objsSnap] = await Promise.all([
       fbDb.collection('areas').get(),
@@ -1783,9 +1784,12 @@ async function fbSyncNow(){
     const areas = areasSnap.docs.map(d=>({id:d.id, ...d.data()}));
     const inds  = indsSnap.docs.map(d=>({id:d.id, ...d.data()}));
     const objs  = objsSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    console.log('[fbSyncNow] areas:', areas.length, '| indicadores:', inds.length, '| objetivos:', objs.length);
 
     const months = fbLastNMonths(3);
+    console.log('[fbSyncNow] buscando registros para os meses:', months);
     const regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
+    console.log('[fbSyncNow] documentos de registros encontrados:', regBuckets.size);
     const registros = [];
     regBuckets.docs.forEach(doc=>{
       const data=doc.data(); const indId=data.indicadorId; const dias=data.dias||{};
@@ -1794,13 +1798,16 @@ async function fbSyncNow(){
         registros.push({id:`${indId}_${data.anoMes}-${dd}`, indicadorId:indId, data:`${data.anoMes}-${dd}`, valor:entry.v, comentario:entry.c||''});
       });
     });
+    console.log('[fbSyncNow] registros individuais reconstruídos:', registros.length);
 
     // Mantém histórico local de meses fora da janela sincronizada; substitui os 3 meses recentes pela nuvem
     const localOlder = DB.registros.filter(r => !months.includes(r.data.slice(0,7)));
+    console.log('[fbSyncNow] registros locais de meses antigos preservados:', localOlder.length);
     if(areas.length) DB.areas = areas;
     if(inds.length)  DB.indicadores = inds;
     if(objs.length)  DB.objetivos = objs;
     DB.registros = [...localOlder, ...registros];
+    console.log('[fbSyncNow] DB.registros final (total):', DB.registros.length);
 
     fbSetStatus('Sincronizado — '+new Date().toLocaleTimeString('pt-BR'), '#10b981', true);
     showToast('Dados sincronizados com a nuvem!','success');
@@ -1809,6 +1816,7 @@ async function fbSyncNow(){
     else if(_activeTab==='gerente') renderGerenteIndicadores();
     else if(_activeTab==='cadastro') renderCadastro();
   }catch(err){
+    console.error('[fbSyncNow] ERRO COMPLETO:', err);
     fbSetStatus('Erro na sincronização: '+err.message, '#ef4444', true);
     showToast('Erro ao sincronizar: '+err.message,'error');
   }
