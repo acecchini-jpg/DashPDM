@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v0.5</title>
+<title>PDM KPI Tracking v0.7</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -85,17 +85,39 @@ select.inp option{background:var(--bg-card);color:var(--tx)}
 input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webkit-calendar-picker-indicator{filter:invert(.5) sepia(1) saturate(2) hue-rotate(200deg);cursor:pointer}
 @media(max-width:768px){#charts-dual-grid{grid-template-columns:1fr!important}#cad-grid{grid-template-columns:1fr!important}#gemba-grid{grid-template-columns:1fr!important}}
 </style></head><body>
+<!-- LOGIN GATE — shown until Firebase auth succeeds -->
+<div id="login-gate" style="position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px">
+  <div class="card" style="width:100%;max-width:380px;padding:28px">
+    <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:22px">
+      <div style="width:46px;height:46px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:12px">
+        <i class="fas fa-chart-line" style="color:#fff;font-size:20px"></i>
+      </div>
+      <h1 style="font-size:16px;font-weight:800;color:var(--tx)">PDM KPI Tracking</h1>
+      <p style="font-size:11px;color:var(--tx3);margin-top:2px">Faça login para continuar</p>
+    </div>
+    <div id="login-error" style="display:none;font-size:12px;color:#fb7185;background:#7f1d1d33;border:1px solid #991b1b;border-radius:7px;padding:8px 11px;margin-bottom:12px"></div>
+    <div style="margin-bottom:11px">
+      <label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">E-MAIL</label>
+      <input type="email" class="inp" id="login-email" autocomplete="username" placeholder="seu@email.com">
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">SENHA</label>
+      <input type="password" class="inp" id="login-password" autocomplete="current-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary" id="login-btn" onclick="doLogin()" style="width:100%;justify-content:center;padding:10px"><i class="fas fa-right-to-bracket"></i> Entrar</button>
+    <p style="font-size:10px;color:var(--tx3);text-align:center;margin-top:14px;line-height:1.5">Primeiro acesso? Digite o e-mail e senha combinados com a equipe — a conta é criada automaticamente.</p>
+  </div>
+</div>
+<!-- APP SHELL — hidden until authenticated -->
+<div id="app-shell" style="display:none">
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v0.5</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v0.7</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
     <button class="nav-tab" onclick="switchTab('relatorio')" id="tab-relatorio"><i class="fas fa-table-list" style="margin-right:5px"></i>Relatório</button>
-    <button class="nav-tab" onclick="switchTab('gemba')" id="tab-gemba"><i class="fas fa-person-walking" style="margin-right:5px"></i>Gemba</button>
-    <button class="nav-tab" onclick="switchTab('gerente')" id="tab-gerente"><i class="fas fa-pen-to-square" style="margin-right:5px"></i>Entrada</button>
-    <button class="nav-tab" onclick="switchTab('cadastro')" id="tab-cadastro"><i class="fas fa-sliders" style="margin-right:5px"></i>Parâmetros</button>
     <button class="nav-tab" onclick="switchTab('importar')" id="tab-importar"><i class="fas fa-file-import" style="margin-right:5px"></i>Importar</button>
   </div>
   <div style="display:flex;gap:6px;padding-left:10px;flex-shrink:0">
@@ -252,37 +274,6 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
   </div>
 </div>
 
-<div class="tab-pane" id="pane-gemba">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-    <div><h1 style="font-size:19px;font-weight:800;color:var(--tx)">Gemba Walk</h1><p style="font-size:12px;color:var(--tx3);margin-top:2px">Observação no chão de fábrica</p></div>
-    <button class="btn btn-success" onclick="saveGemba()"><i class="fas fa-floppy-disk"></i> Registrar</button>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="gemba-grid">
-    <div style="display:flex;flex-direction:column;gap:13px">
-      <div class="card" style="padding:15px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:13px">
-          <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px">DATA</label>
-            <input type="date" class="inp" id="gemba-data"></div>
-          <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px">LOCAL / ÁREA VISITADA</label>
-            <input type="text" class="inp" id="gemba-area" list="gemba-areas-dl" placeholder="Digite o local..." autocomplete="off">
-            <datalist id="gemba-areas-dl"></datalist></div>
-        </div>
-        <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px"><i class="fas fa-eye" style="margin-right:4px"></i>Observações do Chão de Fábrica</label>
-          <textarea class="inp" id="gemba-obs" rows="9" style="resize:vertical;line-height:1.7" placeholder="Descreva as observações no chão de fábrica:&#10;&#10;• Lições Aprendidas&#10;• Pontos de Melhoria&#10;• Necessidade de Suporte"></textarea>
-        </div>
-      </div>
-      <div class="card" style="padding:13px">
-        <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:9px">Observação dos Pilares</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:9px" id="pilares-grid"></div>
-        <div id="pilares-notas" style="display:flex;flex-direction:column;gap:6px"></div>
-      </div>
-    </div>
-    <div><div style="font-size:12px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:9px">Histórico</div>
-      <div id="gemba-timeline"><div style="text-align:center;padding:40px;color:var(--tx3)"><i class="fas fa-history" style="font-size:28px;margin-bottom:10px;opacity:.2;display:block"></i><p>Nenhum registro</p></div></div>
-    </div>
-  </div>
-</div>
-
 <!-- RELATÓRIO -->
 <div class="tab-pane" id="pane-relatorio">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
@@ -344,6 +335,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
   </div>
 </div>
 </main>
+</div><!-- /app-shell -->
 
 <!-- MODALS -->
 <div class="modal-bg" id="modal-comment" style="display:none" onclick="if(event.target===this)closeModal('modal-comment')">
@@ -465,24 +457,26 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
     <div id="settings-status" style="font-size:12px;margin-bottom:12px;padding:8px 11px;border-radius:7px;background:var(--bg-row);border:1px solid var(--border);color:var(--tx2)">
       <i class="fas fa-circle" style="font-size:7px;margin-right:6px;color:var(--tx3)"></i>Desconectado
     </div>
-    <div style="margin-bottom:9px">
-      <label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">CONFIGURAÇÃO FIREBASE (JSON do console)</label>
-      <textarea class="inp" id="cfg-firebase-json" rows="5" style="font-family:monospace;font-size:11px;resize:vertical" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+    <div style="font-size:12px;color:var(--tx2);margin-bottom:12px">
+      Conectado como: <b id="settings-user-email" style="color:var(--tx)">—</b>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px">
-      <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">E-MAIL</label><input type="email" class="inp" id="cfg-email" autocomplete="username"></div>
-      <div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px">SENHA</label><input type="password" class="inp" id="cfg-password" autocomplete="current-password"></div>
-    </div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
-      <button class="btn btn-primary btn-sm" onclick="fbSaveConfigAndConnect()"><i class="fas fa-plug"></i> Salvar e Conectar</button>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn btn-ghost btn-sm" onclick="fbSyncNow()"><i class="fas fa-cloud-arrow-down"></i> Sincronizar agora</button>
-      <button class="btn btn-danger btn-sm" onclick="fbDisconnect()"><i class="fas fa-plug-circle-xmark"></i> Desconectar</button>
+      <button class="btn btn-danger btn-sm" onclick="fbLogoutAndShowGate()"><i class="fas fa-right-from-bracket"></i> Sair (trocar de usuário)</button>
+    </div>
+    <div style="border-top:1px solid var(--border-lt);padding-top:12px;margin-bottom:12px">
+      <div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px"><i class="fas fa-screwdriver-wrench" style="margin-right:4px"></i>Ferramentas de Debug/Admin</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-settings');switchTab('gerente')"><i class="fas fa-pen-to-square"></i> Entrada Manual</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-settings');switchTab('cadastro')"><i class="fas fa-sliders"></i> Parâmetros</button>
+      </div>
+      <p style="font-size:10px;color:var(--tx3);margin-top:7px;line-height:1.5">Os dados vêm da importação do Excel — use isto só para correções pontuais sem reimportar a planilha.</p>
     </div>
     <div style="font-size:11px;color:var(--tx3);line-height:1.6;padding-top:10px;border-top:1px solid var(--border-lt)">
       <i class="fas fa-circle-info" style="margin-right:4px"></i>
-      As credenciais ficam salvas apenas neste navegador. O app continua funcionando offline com os dados locais mesmo sem conexão com a nuvem.
+      A conexão com o Firebase já vem configurada no arquivo. O app continua funcionando offline com os dados locais mesmo sem conexão com a nuvem.
       <br><i class="fas fa-hand-pointer" style="margin-right:4px;margin-top:4px;display:inline-block"></i>
-      Acesso: Shift+clique no botão de tema (ou toque longo no celular).
+      Acesso a este painel: Shift+clique no botão de tema (ou toque longo no celular).
     </div>
   </div>
 </div>
@@ -552,8 +546,7 @@ const DB={
   get indicadores(){return this._g('pdm_indicadores');},set indicadores(v){this._s('pdm_indicadores',v);},
   get objetivos(){return this._g('pdm_objetivos');},set objetivos(v){this._s('pdm_objetivos',v);},
   get registros(){return this._g('pdm_registros');},set registros(v){this._s('pdm_registros',v);},
-  get gemba(){return this._g('pdm_gemba');},set gemba(v){this._s('pdm_gemba',v);},
-  clear(){['pdm_areas','pdm_indicadores','pdm_objetivos','pdm_registros','pdm_gemba'].forEach(k=>localStorage.removeItem(k));}
+  clear(){['pdm_areas','pdm_indicadores','pdm_objetivos','pdm_registros'].forEach(k=>localStorage.removeItem(k));}
 };
 
 // §4 LOGIC
@@ -735,6 +728,13 @@ async function handleFileImport(file) {
     const prim=result.indicadores.filter(i=>!i.secundario).length;
     const sec =result.indicadores.filter(i=> i.secundario).length;
     if (prim===0) { showSecundarios=true; localStorage.setItem('pdm_show_sec','true'); document.querySelectorAll('.cb-sec').forEach(cb=>{cb.checked=true;}); }
+
+    // Envia os dados importados para o Firebase (áreas/indicadores/objetivos completos + registros em lote)
+    if (fbDb) {
+      p(92, 'Enviando para a nuvem...');
+      await fbPushImportedData(result);
+    }
+
     res.style.display='block';
     res.innerHTML=`<div style="background:#064e3b;border:1px solid #065f46;border-radius:10px;padding:14px">
       <div style="font-size:14px;font-weight:700;color:#34d399;margin-bottom:9px"><i class="fas fa-circle-check" style="margin-right:5px"></i>Importação concluída!</div>
@@ -744,6 +744,7 @@ async function handleFileImport(file) {
         <span>Secundários:</span><b style="color:#a5b4fc">${sec}</b>
         <span>Cols. de data:</span><b style="color:#e2e8f0">${result._dateCols||0}</b>
         <span>Registros:</span><b style="color:#e2e8f0">${result.registros.length.toLocaleString('pt-BR')}</b>
+        <span>Nuvem:</span><b style="color:${fbDb?'#34d399':'#f59e0b'}">${fbDb?'Enviado ✓':'Não conectado (só local)'}</b>
       </div></div>`;
     showToast('Importação concluída!','success');
     // S1: point filters at the most recent month that actually has data
@@ -1332,7 +1333,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v0.5_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v0.7_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1545,49 +1546,13 @@ function saveObjetivo(){
 }
 function deleteObjetivo(id){if(!confirm('Remover versão?'))return;DB.objetivos=DB.objetivos.filter(o=>o.id!==id);renderObjetivosList();showToast('Removido','success');fbDeleteDoc('objetivos',id);}
 
-// §11 GEMBA
-let pilaresState={};
-const PILARES=[{key:'seg',icon:'fa-hard-hat',label:'Segurança',color:'#f59e0b'},{key:'qua',icon:'fa-award',label:'Qualidade',color:'#8b5cf6'},{key:'5s',icon:'fa-broom',label:'5Ss',color:'#3b82f6'},{key:'pad',icon:'fa-clipboard-check',label:'Padrões',color:'#10b981'},{key:'ind',icon:'fa-chart-bar',label:'Indicadores',color:'#06b6d4'},{key:'out',icon:'fa-ellipsis',label:'Outros',color:'#64748b'}];
-function initGemba(){
-  if(!document.getElementById('gemba-data').value)document.getElementById('gemba-data').value=todayISO();
-  const dl=document.getElementById('gemba-areas-dl');
-  const all=[...new Set([...DB.areas.map(a=>a.nome),...DB.gemba.map(g=>g.areaNome).filter(Boolean)])].sort();
-  dl.innerHTML=all.map(n=>`<option value="${n}">`).join('');
-  pilaresState={};renderPilares();renderGembaTimeline();
-}
-function renderPilares(){
-  document.getElementById('pilares-grid').innerHTML=PILARES.map(p=>{const st=pilaresState[p.key]||'nd';return`<div class="pilar-btn ${st}" onclick="togglePilar('${p.key}')"><i class="fas ${p.icon}" style="color:${p.color};font-size:17px;margin-bottom:3px;display:block"></i><div style="font-size:11px;font-weight:600;color:var(--tx)">${p.label}</div><div style="font-size:10px;margin-top:2px;color:${st==='ok'?'#34d399':st==='nok'?'#fb7185':'var(--tx3)'}">${st==='ok'?'OK':st==='nok'?'NOK':'—'}</div></div>`;}).join('');
-  document.getElementById('pilares-notas').innerHTML=PILARES.filter(p=>pilaresState[p.key]==='nok').map(p=>`<div><label style="font-size:10px;color:var(--tx3);font-weight:700;display:block;margin-bottom:4px"><i class="fas ${p.icon}" style="color:${p.color};margin-right:4px"></i>${p.label}</label><input type="text" class="inp inp-sm" id="pilar-nota-${p.key}" placeholder="Detalhe..." value="${pilaresState['nota_'+p.key]||''}"></div>`).join('');
-}
-function togglePilar(key){const c=pilaresState[key]||'nd';pilaresState[key]=c==='nd'?'ok':c==='ok'?'nok':'nd';renderPilares();}
-function saveGemba(){
-  const data=document.getElementById('gemba-data').value,areaNome=document.getElementById('gemba-area').value.trim(),obs=document.getElementById('gemba-obs').value.trim();
-  if(!data||!areaNome){showToast('Data e local são obrigatórios','error');return;}
-  PILARES.forEach(p=>{const el=document.getElementById('pilar-nota-'+p.key);if(el)pilaresState['nota_'+p.key]=el.value.trim();});
-  const gembaObj={id:uid(),data,areaNome,obs,pilares:{...pilaresState}};
-  DB.gemba=[...DB.gemba,gembaObj];
-  document.getElementById('gemba-obs').value='';document.getElementById('gemba-area').value='';pilaresState={};renderPilares();renderGembaTimeline();initGemba();showToast('Gemba registrado!','success');
-  fbPushGemba(gembaObj);
-}
-function renderGembaTimeline(){
-  const walks=DB.gemba.slice().sort((a,b)=>b.data.localeCompare(a.data)),el=document.getElementById('gemba-timeline');
-  if(!walks.length){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--tx3)"><i class="fas fa-history" style="font-size:28px;margin-bottom:10px;opacity:.2;display:block"></i><p>Nenhum registro</p></div>';return;}
-  el.innerHTML=walks.map((w,idx)=>{
-    const pb=PILARES.map(p=>{const st=w.pilares[p.key]||'nd';if(st==='nd')return'';const c=st==='ok'?'#10b981':'#ef4444';return`<span style="font-size:10px;background:${c}22;color:${c};border:1px solid ${c}55;padding:1px 7px;border-radius:20px">${p.label}</span>`;}).filter(Boolean).join(' ');
-    return`<div style="display:flex;gap:9px;margin-bottom:9px">
-      <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0"><div style="width:10px;height:10px;border-radius:50%;background:#3b82f6;margin-top:3px"></div>${idx<walks.length-1?'<div style="width:2px;flex:1;background:var(--border-lt);margin-top:4px"></div>':''}</div>
-      <div class="gemba-card" style="flex:1">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:4px">
-          <span style="font-size:13px;font-weight:700;color:var(--tx)"><i class="fas fa-calendar" style="color:#3b82f6;margin-right:5px"></i>${fmtDate(w.data)}</span>
-          <div style="display:flex;align-items:center;gap:5px"><span class="tag"><i class="fas fa-location-dot" style="margin-right:3px"></i>${w.areaNome}</span><button class="btn btn-danger btn-sm" onclick="deleteGemba('${w.id}')"><i class="fas fa-trash"></i></button></div>
-        </div>
-        ${pb?`<div style="margin-bottom:7px;display:flex;gap:4px;flex-wrap:wrap">${pb}</div>`:''}
-        ${w.obs?`<p style="font-size:12px;color:var(--tx2);line-height:1.7;white-space:pre-line">${w.obs.slice(0,300)}${w.obs.length>300?'…':''}</p>`:''}
-      </div>
-    </div>`;
-  }).join('');
-}
-function deleteGemba(id){if(!confirm('Remover?'))return;DB.gemba=DB.gemba.filter(g=>g.id!==id);renderGembaTimeline();showToast('Removido','success');fbDeleteDoc('gemba',id);}
+// §11 (Gemba removido)
+
+
+
+
+
+
 
 // §12 RELATÓRIO (Feature 3 — async, Feature 4 — meta col, Feature 5 — start day)
 function setCurrentWeek(){document.getElementById('r-semana').value=isoToWeekVal(todayISO());}
@@ -1703,12 +1668,11 @@ function switchTab(tab){
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('pane-'+tab).classList.add('active');
-  document.getElementById('tab-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab)?.classList.add('active'); // pode não existir na nav (abas ocultas)
   document.getElementById('day-popup').style.display='none';
   if(tab==='dashboard')renderDashboard();
   if(tab==='gerente')initGerente();
   if(tab==='cadastro')renderCadastro();
-  if(tab==='gemba')initGemba();
   if(tab==='relatorio'){initRelatorio();renderRelatorio();}
 }
 
@@ -1726,21 +1690,6 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelec
 document.addEventListener('click',e=>{const popup=document.getElementById('day-popup');if(popup&&!popup.contains(e.target)&&!e.target.closest('#chartMensal'))popup.style.display='none';});
 
 // §15 INIT
-window.addEventListener('DOMContentLoaded',()=>{
-  loadTheme();
-  // S3: restore saved filters (fallback: current month)
-  let sf=null;try{sf=JSON.parse(localStorage.getItem('pdm_filters')||'null');}catch{}
-  const m=new Date().getMonth()+1;
-  document.getElementById('f-mes').value=(sf&&sf.mes)?sf.mes:padM(m);
-  if(sf){
-    // area/ind/ano restored after populateDashFilters builds options (renderDashboard handles it)
-    window._savedFilters=sf;
-  }
-  setCurrentWeek();
-  document.querySelectorAll('.cb-sec').forEach(cb=>{cb.checked=showSecundarios;});
-  if(DB.areas.length===0&&DB.indicadores.length===0)switchTab('importar');else switchTab('dashboard');
-});
-
 // §FB FIREBASE CLOUD SYNC
 let fbApp=null, fbAuth=null, fbDb=null, fbUser=null, fbUnsubRegistros=null;
 let _longPressTimer=null, _longPressFired=false;
@@ -1757,14 +1706,10 @@ function fbStartLongPress(){
 function fbCancelLongPress(){ if(_longPressTimer){clearTimeout(_longPressTimer);_longPressTimer=null;} }
 
 function openSettingsModal(){
-  const cfg=fbLoadConfig();
-  if(cfg) document.getElementById('cfg-firebase-json').value=JSON.stringify(cfg,null,2);
-  const email=localStorage.getItem('pdm_fb_email')||'';
-  if(email) document.getElementById('cfg-email').value=email;
+  const email=fbUser?fbUser.email:(localStorage.getItem('pdm_fb_email')||'—');
+  document.getElementById('settings-user-email').textContent=email;
   document.getElementById('modal-settings').style.display='flex';
 }
-
-function fbLoadConfig(){ try{return JSON.parse(localStorage.getItem('pdm_fb_config')||'null');}catch{return null;} }
 
 function fbSetStatus(msg,color,connected){
   const el=document.getElementById('settings-status'); if(!el)return;
@@ -1773,70 +1718,40 @@ function fbSetStatus(msg,color,connected){
   if(dot) dot.style.display=connected?'inline-block':'none';
 }
 
-function fbParseConfigSnippet(raw){
-  // Aceita: JSON puro OU o snippet completo do console Firebase
-  // (const firebaseConfig = {...}; com comentários, chaves sem aspas, etc.)
-  const start=raw.indexOf('{'), end=raw.lastIndexOf('}');
-  if(start===-1||end===-1||end<start) throw new Error('Não encontrei um objeto { ... } no texto colado.');
-  const objText=raw.slice(start,end+1);
-  try{ return JSON.parse(objText); }
-  catch(e1){
-    try{
-      // eslint-disable-next-line no-new-func
-      return new Function('"use strict"; return (' + objText + ');')();
-    }catch(e2){
-      throw new Error('Não consegui interpretar a configuração. Copie o objeto firebaseConfig completo.');
-    }
-  }
-}
+/* fbParseConfigSnippet removido — config embutida */
 
-async function fbSaveConfigAndConnect(){
-  const raw=document.getElementById('cfg-firebase-json').value.trim();
-  const email=document.getElementById('cfg-email').value.trim();
-  const pass=document.getElementById('cfg-password').value;
-  if(!raw){ showToast('Cole a configuração do Firebase','error'); return; }
-  let cfg;
-  try{ cfg=fbParseConfigSnippet(raw); }catch(e){ showToast(e.message,'error'); return; }
-  if(!cfg.apiKey || !cfg.projectId){ showToast('Configuração incompleta: faltam apiKey/projectId','error'); return; }
-  localStorage.setItem('pdm_fb_config', JSON.stringify(cfg));
-  if(email) localStorage.setItem('pdm_fb_email', email);
-  fbSetStatus('Conectando...', '#f59e0b', false);
-  try{
-    await fbConnect(cfg, email, pass);
-  }catch(err){
-    fbSetStatus('Erro: '+err.message, '#ef4444', false);
-    showToast('Erro ao conectar: '+err.message,'error');
-  }
-}
+/* fbSaveConfigAndConnect removido — login via tela inicial */
 
-async function fbConnect(cfg, email, pass){
+async function fbConnect(email, pass){
   if(typeof firebase==='undefined') throw new Error('SDK do Firebase não carregado (verifique sua conexão)');
-  if(!fbApp){ fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg); }
+  if(!fbApp){ fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG); }
   fbAuth = firebase.auth();
   fbDb = firebase.firestore();
-  if(email && pass){
-    let cred;
-    try{
-      cred = await fbAuth.signInWithEmailAndPassword(email, pass);
-    }catch(err){
-      if(err.code==='auth/user-not-found' || err.code==='auth/invalid-credential'){
-        cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
-      } else { throw err; }
-    }
-    fbUser = cred.user;
+  let cred;
+  try{
+    cred = await fbAuth.signInWithEmailAndPassword(email, pass);
+  }catch(err){
+    if(err.code==='auth/user-not-found' || err.code==='auth/invalid-credential'){
+      cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
+    } else { throw err; }
   }
-  fbSetStatus('Conectado'+(fbUser?' — '+fbUser.email:''), '#10b981', true);
-  showToast('Conectado ao Firebase!','success');
+  fbUser = cred.user;
+  localStorage.setItem('pdm_fb_email', email);
+  fbSetStatus('Conectado — '+fbUser.email, '#10b981', true);
   await fbSyncNow();
   fbStartRealtimeSync();
 }
 
-function fbDisconnect(){
+function fbLogoutAndShowGate(){
   if(fbUnsubRegistros){ fbUnsubRegistros(); fbUnsubRegistros=null; }
   if(fbAuth) fbAuth.signOut().catch(()=>{});
-  fbUser=null; fbApp=null; fbDb=null; fbAuth=null;
+  fbUser=null;
   fbSetStatus('Desconectado', 'var(--tx3)', false);
-  showToast('Desconectado da nuvem','success');
+  closeModal('modal-settings');
+  document.getElementById('app-shell').style.display='none';
+  document.getElementById('login-gate').style.display='flex';
+  document.getElementById('login-email').value='';
+  document.getElementById('login-password').value='';
 }
 
 function fbLastNMonths(n){
@@ -1853,16 +1768,14 @@ async function fbSyncNow(){
   if(!fbDb){ showToast('Conecte-se primeiro (Salvar e Conectar)','error'); return; }
   fbSetStatus('Sincronizando...', '#f59e0b', true);
   try{
-    const [areasSnap, indsSnap, objsSnap, gembaSnap] = await Promise.all([
+    const [areasSnap, indsSnap, objsSnap] = await Promise.all([
       fbDb.collection('areas').get(),
       fbDb.collection('indicadores').get(),
-      fbDb.collection('objetivos').get(),
-      fbDb.collection('gemba').get()
+      fbDb.collection('objetivos').get()
     ]);
     const areas = areasSnap.docs.map(d=>({id:d.id, ...d.data()}));
     const inds  = indsSnap.docs.map(d=>({id:d.id, ...d.data()}));
     const objs  = objsSnap.docs.map(d=>({id:d.id, ...d.data()}));
-    const gemba = gembaSnap.docs.map(d=>({id:d.id, ...d.data()}));
 
     const months = fbLastNMonths(3);
     const regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
@@ -1880,7 +1793,6 @@ async function fbSyncNow(){
     if(areas.length) DB.areas = areas;
     if(inds.length)  DB.indicadores = inds;
     if(objs.length)  DB.objetivos = objs;
-    if(gemba.length) DB.gemba = gemba;
     DB.registros = [...localOlder, ...registros];
 
     fbSetStatus('Sincronizado — '+new Date().toLocaleTimeString('pt-BR'), '#10b981', true);
@@ -1890,7 +1802,6 @@ async function fbSyncNow(){
     else if(at==='relatorio') renderRelatorio();
     else if(at==='gerente') renderGerenteIndicadores();
     else if(at==='cadastro') renderCadastro();
-    else if(at==='gemba') initGemba();
   }catch(err){
     fbSetStatus('Erro na sincronização: '+err.message, '#ef4444', true);
     showToast('Erro ao sincronizar: '+err.message,'error');
@@ -1923,8 +1834,48 @@ function fbStartRealtimeSync(){
 function fbPushArea(area){ if(!fbDb) return; fbDb.collection('areas').doc(area.id).set(area).catch(e=>console.warn('fbPushArea',e)); }
 function fbPushIndicador(ind){ if(!fbDb) return; fbDb.collection('indicadores').doc(ind.id).set(ind).catch(e=>console.warn('fbPushIndicador',e)); }
 function fbPushObjetivo(obj){ if(!fbDb) return; fbDb.collection('objetivos').doc(obj.id).set(obj).catch(e=>console.warn('fbPushObjetivo',e)); }
-function fbPushGemba(g){ if(!fbDb) return; fbDb.collection('gemba').doc(g.id).set(g).catch(e=>console.warn('fbPushGemba',e)); }
+
 function fbDeleteDoc(col,id){ if(!fbDb) return; fbDb.collection(col).doc(id).delete().catch(e=>console.warn('fbDeleteDoc',e)); }
+
+// Envia o resultado completo de uma importação Excel para o Firebase.
+// Áreas/indicadores/objetivos: coleções pequenas, gravadas por completo (substituem os documentos existentes por ID).
+// Registros: usa o mesmo bucketing por indicador+mês do fbPushRegistros, mas em lotes (batch) para eficiência.
+async function fbPushImportedData(result){
+  if(!fbDb) return;
+  try{
+    // Áreas, indicadores e objetivos — poucos documentos, grava tudo com Promise.all
+    const smallWrites = [
+      ...result.areas.map(a => fbDb.collection('areas').doc(a.id).set(a)),
+      ...result.indicadores.map(i => fbDb.collection('indicadores').doc(i.id).set(i)),
+      ...result.objetivos.map(o => fbDb.collection('objetivos').doc(o.id).set(o))
+    ];
+    await Promise.all(smallWrites);
+
+    // Registros — agrupa por indicador+mês (bucket) e grava em lotes de até 400 (limite do batch é 500)
+    const byBucket = {};
+    result.registros.forEach(r=>{
+      const anoMes = r.data.slice(0,7), dd = r.data.slice(8,10);
+      const key = `${r.indicadorId}_${anoMes}`;
+      if(!byBucket[key]) byBucket[key] = {indicadorId:r.indicadorId, anoMes, dias:{}};
+      byBucket[key].dias[dd] = {v:r.valor, c:r.comentario||''};
+    });
+    const bucketKeys = Object.keys(byBucket);
+    const CHUNK = 400;
+    for(let i=0; i<bucketKeys.length; i+=CHUNK){
+      const batch = fbDb.batch();
+      bucketKeys.slice(i, i+CHUNK).forEach(key=>{
+        const b = byBucket[key];
+        const payload = {indicadorId:b.indicadorId, anoMes:b.anoMes};
+        Object.keys(b.dias).forEach(dd=>{ payload['dias.'+dd] = b.dias[dd]; });
+        batch.set(fbDb.collection('registros').doc(key), payload, {merge:true});
+      });
+      await batch.commit();
+    }
+  }catch(e){
+    console.warn('fbPushImportedData', e);
+    showToast('Dados salvos localmente, mas houve erro ao enviar à nuvem: '+e.message, 'error');
+  }
+}
 
 // Push de registros: agrupa por indicador+mês e grava só os dias alterados (dot-notation, merge:true)
 function fbPushRegistros(regs){
@@ -1944,27 +1895,87 @@ function fbPushRegistros(regs){
   });
 }
 
-// Reconecta automaticamente se já houver config salva
-(function fbAutoConnect(){
-  const cfg=fbLoadConfig();
-  const email=localStorage.getItem('pdm_fb_email');
-  if(!cfg) return;
-  // Tenta conectar silenciosamente sem senha (mantém sessão anônima se já havia login persistido pelo SDK)
-  setTimeout(async ()=>{
-    try{
-      if(typeof firebase==='undefined') return;
-      fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
-      fbAuth = firebase.auth();
-      fbDb = firebase.firestore();
-      fbAuth.onAuthStateChanged(user=>{
-        if(user){
-          fbUser=user;
-          fbSetStatus('Conectado — '+user.email, '#10b981', true);
-          fbSyncNow(); fbStartRealtimeSync();
-        }
-      });
-    }catch(e){ console.warn('fbAutoConnect', e); }
-  }, 300);
-})();
+// Configuração do Firebase — embutida (não é secreta, ver nota de segurança nas Regras do Firestore)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyArQxmXf_6msYQaWFE47nTqHPih5zI8dOs",
+  authDomain: "pdm-kpi-tracking-6cb75.firebaseapp.com",
+  projectId: "pdm-kpi-tracking-6cb75",
+  storageBucket: "pdm-kpi-tracking-6cb75.firebasestorage.app",
+  messagingSenderId: "118132497136",
+  appId: "1:118132497136:web:59bdbd1130adcbf3570035"
+};
+
+function showLoginError(msg){
+  const el=document.getElementById('login-error');
+  el.textContent=msg; el.style.display='block';
+}
+function hideLoginError(){
+  document.getElementById('login-error').style.display='none';
+}
+function revealApp(){
+  document.getElementById('login-gate').style.display='none';
+  document.getElementById('app-shell').style.display='block';
+  runAppInit(); // inicializa filtros/abas só depois do login confirmado
+}
+
+async function doLogin(){
+  const email=document.getElementById('login-email').value.trim();
+  const pass=document.getElementById('login-password').value;
+  const btn=document.getElementById('login-btn');
+  hideLoginError();
+  if(!email||!pass){ showLoginError('Preencha e-mail e senha.'); return; }
+  btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Entrando...';
+  try{
+    await fbConnect(email, pass);
+    revealApp();
+  }catch(err){
+    const msgs={
+      'auth/wrong-password':'Senha incorreta.',
+      'auth/invalid-credential':'E-mail ou senha incorretos.',
+      'auth/invalid-email':'E-mail inválido.',
+      'auth/too-many-requests':'Muitas tentativas. Aguarde alguns minutos.',
+      'auth/weak-password':'Senha muito curta (mínimo 6 caracteres).'
+    };
+    showLoginError(msgs[err.code] || ('Erro ao entrar: '+err.message));
+  }finally{
+    btn.disabled=false; btn.innerHTML='<i class="fas fa-right-to-bracket"></i> Entrar';
+  }
+}
+
+// Inicialização do app (movida do antigo DOMContentLoaded) — roda só após login confirmado
+function runAppInit(){
+  loadTheme();
+  let sf=null;try{sf=JSON.parse(localStorage.getItem('pdm_filters')||'null');}catch{}
+  const m=new Date().getMonth()+1;
+  document.getElementById('f-mes').value=(sf&&sf.mes)?sf.mes:padM(m);
+  if(sf) window._savedFilters=sf;
+  setCurrentWeek();
+  document.querySelectorAll('.cb-sec').forEach(cb=>{cb.checked=showSecundarios;});
+  if(DB.areas.length===0&&DB.indicadores.length===0)switchTab('importar');else switchTab('dashboard');
+}
+
+// Ao carregar a página: inicializa o Firebase e verifica se já existe sessão ativa.
+// Se sim, pula a tela de login. Se não, mantém o gate visível aguardando doLogin().
+window.addEventListener('DOMContentLoaded',()=>{
+  try{
+    if(typeof firebase==='undefined'){ showLoginError('Não foi possível carregar o Firebase. Verifique sua conexão e recarregue a página.'); return; }
+    fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+    fbAuth = firebase.auth();
+    fbDb = firebase.firestore();
+    fbAuth.onAuthStateChanged(user=>{
+      if(user){
+        fbUser=user;
+        fbSetStatus('Conectado — '+user.email, '#10b981', true);
+        const gateVisible = document.getElementById('login-gate').style.display !== 'none';
+        fbSyncNow(); fbStartRealtimeSync();
+        if(gateVisible) revealApp();
+      }
+      // se não há usuário, o gate simplesmente permanece visível (comportamento padrão inicial)
+    });
+  }catch(e){
+    console.warn('Firebase init error', e);
+    showLoginError('Erro ao iniciar conexão com a nuvem: '+e.message);
+  }
+});
 
 </script></body></html>
