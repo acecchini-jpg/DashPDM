@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v1.3</title>
+<title>PDM KPI Tracking v1.4</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.3</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.4</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -505,6 +505,16 @@ let _relRenderToken=0; // for async cancel
 
 // §2 UTILS
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+// ID determinístico: mesmo texto de entrada SEMPRE gera o mesmo ID.
+// Usado para áreas, indicadores e objetivos, pra que reimportar a mesma planilha
+// (ou reabrir depois de um reset local) nunca crie entidades duplicadas na nuvem —
+// em vez de gerar um ID novo aleatório toda vez, reconcilia com o que já existe.
+function stableId(prefix, str){
+  str = String(str).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  let hash = 5381;
+  for (let i=0; i<str.length; i++) hash = ((hash*33) ^ str.charCodeAt(i)) >>> 0;
+  return prefix + hash.toString(36);
+}
 function todayISO(){return new Date().toISOString().slice(0,10);}
 function excelSerialToISO(s){return new Date((s-25569)*86400000).toISOString().slice(0,10);}
 function fmtDate(iso){if(!iso)return'';const[y,m,d]=iso.split('-');return`${d}/${m}/${y}`;}
@@ -840,11 +850,11 @@ function parsePDMExcelJS(workbook) {
     const isPercentual = tipoMeta !== 'ok-nok' && numFmt.includes('%');
     const secundario = !isCellBluePrimary(cellC);
 
-    if (!aM[areaNome]) { const a={id:uid(),nome:areaNome}; areas.push(a); aM[areaNome]=a.id; }
-    const ind = {id:uid(),areaId:aM[areaNome],nome:indNome,tipoMeta,unidadeMedida:isPercentual?'%':'',secundario,percentual:isPercentual,agregacao};
+    if (!aM[areaNome]) { const a={id:stableId('a_',areaNome),nome:areaNome}; areas.push(a); aM[areaNome]=a.id; }
+    const ind = {id:stableId('i_',areaNome+'|'+indNome),areaId:aM[areaNome],nome:indNome,tipoMeta,unidadeMedida:isPercentual?'%':'',secundario,percentual:isPercentual,agregacao};
     inds.push(ind);
     if (objVal !== null && objVal !== undefined)
-      objs.push({id:uid(),indicadorId:ind.id,valor:objVal,dataInicio:'2025-01-01'});
+      objs.push({id:stableId('o_',ind.id+'|2025-01-01'),indicadorId:ind.id,valor:objVal,dataInicio:'2025-01-01'});
 
     for (const {col, date} of dateCols) {
       const cell = rowCells[col];
@@ -893,7 +903,7 @@ function enrichObjExcelJS(workbook, result) {
       const cell = rowCells[col]; if (!cell) continue;
       let val = resolveCell(cell);
       if (val === null || val === undefined || val instanceof Date) continue;
-      if (val !== prev) { result.objetivos.push({id:uid(),indicadorId:ind.id,valor:val,dataInicio:date}); prev=val; }
+      if (val !== prev) { result.objetivos.push({id:stableId('o_',ind.id+'|'+date),indicadorId:ind.id,valor:val,dataInicio:date}); prev=val; }
     }
   });
 }
@@ -1359,7 +1369,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.3_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.4_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1527,7 +1537,7 @@ function openAreaModal(id){
 function saveArea(){
   const id=document.getElementById('modal-area-id').value,nome=document.getElementById('modal-area-nome').value.trim();
   if(!nome){showToast('Digite o nome','error');return;}
-  const areaObj = id ? {id, nome} : {id:uid(), nome};
+  const areaObj = id ? {id, nome} : {id:stableId('a_',nome), nome};
   let areas=DB.areas;if(id)areas=areas.map(a=>a.id===id?{...a,nome}:a);else areas.push(areaObj);
   DB.areas=areas;closeModal('modal-area');renderCadastro();showToast('Área salva!','success');
   fbPushArea(areaObj);
@@ -1548,7 +1558,7 @@ function saveIndicador(){
   const pct=document.getElementById('modal-ind-pct').checked;
   const agr=document.getElementById('modal-ind-agr').value||'ultimo';
   if(!nome){showToast('Digite o nome','error');return;}
-  const indObj = {id: id||uid(), areaId:aid, nome, unidadeMedida:un, tipoMeta:tipo, secundario:sec, percentual:pct, agregacao:agr};
+  const indObj = {id: id||stableId('i_',aid+'|'+nome), areaId:aid, nome, unidadeMedida:un, tipoMeta:tipo, secundario:sec, percentual:pct, agregacao:agr};
   let inds=DB.indicadores;if(id)inds=inds.map(i=>i.id===id?{...i,...indObj}:i);else inds.push(indObj);
   DB.indicadores=inds;closeModal('modal-ind');renderCadastro();showToast('Salvo!','success');
   fbPushIndicador(indObj);
