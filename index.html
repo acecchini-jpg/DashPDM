@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v1.2</title>
+<title>PDM KPI Tracking v1.3</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.2</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.3</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -1359,7 +1359,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.2_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.3_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1907,6 +1907,14 @@ function fbStartRealtimeSync(){
   const curMonth = `${new Date().getFullYear()}-${padM(new Date().getMonth()+1)}`;
   fbUnsubRegistros = fbDb.collection('registros').where('anoMes','==',curMonth)
     .onSnapshot(snap=>{
+      // FIX: ignora disparos que vêm só do cache local (podem ser parciais/vazios logo
+      // após criar o listener). Só aceita dados já confirmados pelo servidor — evita que
+      // um snapshot incompleto sobrescreva dados corretos trazidos pela sincronização.
+      if(snap.metadata.fromCache){
+        console.log('[fbRealtimeSync] snapshot do cache ignorado (aguardando confirmação do servidor)');
+        return;
+      }
+      console.log('[fbRealtimeSync] snapshot do servidor confirmado —', snap.docChanges().length, 'mudanças');
       snap.docChanges().forEach(change=>{
         if(change.type==='removed') return;
         const data=change.doc.data(); const indId=data.indicadorId; const dias=extractDiasFields(data);
@@ -1917,7 +1925,7 @@ function fbStartRealtimeSync(){
         });
       });
       if(_activeTab==='dashboard') renderDashboard();
-    }, err=>{ console.warn('Firebase realtime sync:', err.message); });
+    }, err=>{ console.error('[fbRealtimeSync] ERRO:', err); });
 }
 
 // Push helpers — chamados a partir das funções de save/delete já existentes.
