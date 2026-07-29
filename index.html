@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v1.9</title>
+<title>PDM KPI Tracking v2.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.9</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.0</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -1117,38 +1117,47 @@ function buildSparklineCards(inds) {
   if(!inds.length){el.innerHTML='';return;}
   const dk=document.documentElement.getAttribute('data-theme')==='dark';
 
-  // Dia de referência: o dia mais recente com QUALQUER dado, entre TODOS os indicadores
-  // (não só os que estão sendo exibidos agora) — normalmente é "ontem".
-  const diaReferencia = DB.registros.reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
+  // Dia de referência: usa a MODA (dia mais FREQUENTE entre os últimos registros de
+  // cada indicador diário), não o máximo absoluto — evita marcar quase todo mundo como
+  // "atrasado" só porque um ou dois indicadores isolados adiantaram/atrasaram um dia.
+  const contagemDias = {};
+  inds.forEach(ind=>{
+    if(ind.periodicidade==='semanal') return; // semanais não participam da moda
+    const regsInd = DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
+    const lat = regsInd[regsInd.length-1];
+    if(lat) contagemDias[lat.data] = (contagemDias[lat.data]||0)+1;
+  });
+  const diaReferencia = Object.entries(contagemDias).sort((a,b)=>b[1]-a[1])[0]?.[0]
+    || DB.registros.reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
 
   el.innerHTML=inds.map(ind=>{
     const regsInd=DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
     const latest=regsInd[regsInd.length-1];
     const meta=latest?getMetaParaData(ind.id,latest.data):null;
     const st=latest?getStatus(ind.tipoMeta,latest.valor,meta?meta.valor:null):'nd';
-    const valColor=st==='ok'?'#10b981':st==='nok'?'#ef4444':'#6b7280';
 
-    // PONTO 4 (híbrido): indicador semanal (periodicidade==='semanal', módulo 2 na
-    // coluna D) só "deveria" estar atualizado até a última terça — não a terças,
-    // é normal estar "atrasado" em relação ao dia de referência geral, sem ser bug.
+    // PONTO 4 (híbrido): indicador semanal só "deveria" estar atualizado até a última
+    // terça — não é atraso real, é o ritmo normal dele.
     const diaEsperado = (ind.periodicidade==='semanal') ? ultimaTercaAteA(diaReferencia) : diaReferencia;
-    const estaEmDia = !latest || latest.data===diaEsperado;
-    const badgeData = (!estaEmDia && latest) ? `<span style="font-size:8px;color:#f59e0b;font-weight:700;margin-left:4px;white-space:nowrap">${fmtDate(latest.data)}</span>` : '';
+    const estaAtrasado = latest && latest.data!==diaEsperado;
 
-    // FIX 2: Primary=white bg, Secondary=gray bg
-    const cardBg  = ind.secundario ? (dk?'#374151':'#e5e7eb') : '#ffffff';
-    const txColor = ind.secundario ? (dk?'#9ca3af':'#6b7280') : '#111827';
-    const txMuted = ind.secundario ? (dk?'#6b7280':'#9ca3af') : '#374151';
-    const borderC = st==='ok'?'#10b981':st==='nok'?'#ef4444':'#d1d5db';
+    // Indicador atrasado: cartão em tons de cinza/preto, sem cor de status — só o aviso
+    const valColor  = estaAtrasado ? (dk?'#9ca3af':'#4b5563') : (st==='ok'?'#10b981':st==='nok'?'#ef4444':'#6b7280');
+    const cardBg    = estaAtrasado ? (dk?'#1f2937':'#f3f4f6') : (ind.secundario ? (dk?'#374151':'#e5e7eb') : '#ffffff');
+    const txColor   = estaAtrasado ? (dk?'#9ca3af':'#4b5563') : (ind.secundario ? (dk?'#9ca3af':'#6b7280') : '#111827');
+    const txMuted   = estaAtrasado ? (dk?'#6b7280':'#9ca3af') : (ind.secundario ? (dk?'#6b7280':'#9ca3af') : '#374151');
+    const borderC   = estaAtrasado ? (dk?'#4b5563':'#d1d5db') : (st==='ok'?'#10b981':st==='nok'?'#ef4444':'#d1d5db');
+    const avisoAtraso = estaAtrasado ? `<div style="font-size:9px;color:#ef4444;font-weight:700;margin-top:2px">⚠️ ${fmtDate(latest.data)}</div>` : '';
 
     const lastComment=(()=>{const lr=[...DB.registros].filter(r=>r.indicadorId===ind.id&&r.comentario).sort((a,b)=>b.data.localeCompare(a.data));return lr.length?lr[0].comentario:'';})();
     const cardTitle=lastComment?`${ind.nome} — 💬 ${lastComment.slice(0,120)}`:ind.nome;
 
     return`<div style="background:${cardBg};border:1px solid ${borderC};border-left:3px solid ${borderC};border-radius:7px;padding:7px 9px;cursor:pointer;transition:box-shadow .18s;overflow:hidden" onclick="drillDown('${ind.id}')" title="${cardTitle}" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'" onmouseout="this.style.boxShadow=''">
       <div style="font-size:9px;font-weight:700;color:${txColor};display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;min-height:22px;margin-bottom:2px;word-break:break-word">${ind.nome}${ind.secundario?`<span style="margin-left:5px;font-size:9px;background:${dk?'#4b5563':'#d1d5db'};color:${dk?'#9ca3af':'#6b7280'};border-radius:10px;padding:1px 5px">2°</span>`:''}</div>
-      <div style="font-size:15px;font-weight:800;color:${valColor};line-height:1;margin:2px 0">${latest?fmtVal(latest.valor,ind):'—'}${badgeData}</div>
+      <div style="font-size:15px;font-weight:800;color:${valColor};line-height:1;margin:2px 0">${latest?fmtVal(latest.valor,ind):'—'}</div>
+      ${avisoAtraso}
       <div style="font-size:10px;color:${txMuted}">Meta: ${meta?fmtVal(meta.valor,ind):'N/D'}</div>
-      <div style="height:42px;margin-top:6px"><canvas id="spark-c-${ind.id}"></canvas></div>
+      <div style="height:42px;margin-top:6px"><canvas id="spark-c-${ind.id}" style="${estaAtrasado?'filter:grayscale(1);opacity:.7':''}"></canvas></div>
     </div>`;
   }).join('');
 
@@ -1372,8 +1381,25 @@ function renderDetailTable(regs) {
   const el=document.getElementById('dash-tbody');
   const badge=document.getElementById('detail-date-badge');
   const lbl=document.getElementById('detail-date-label');
-  let disp=regs;
   const titleEl=document.getElementById('detail-title');
+  const hintId='detail-comments-hint';
+  let hint=document.getElementById(hintId);
+
+  // PONTO 2: se um MÊS específico está selecionado (não "Todos") e nenhuma barra
+  // do gráfico foi clicada ainda, não faz sentido "adivinhar" um dia sozinho —
+  // oculta e pede pra clicar na barra, evitando mostrar o comentário de um dia
+  // qualquer como se fosse representativo do mês inteiro.
+  const mesSelecionado = document.getElementById('f-mes')?.value;
+  if(!dashDetailDate && mesSelecionado && mesSelecionado!=='00'){
+    if(badge) badge.style.display='none';
+    if(titleEl) titleEl.textContent='Registros Detalhados';
+    if(hint) hint.remove();
+    document.getElementById('dash-table-count').textContent='';
+    el.innerHTML=`<div style="text-align:center;color:var(--tx3);padding:28px;font-size:13px"><i class="fas fa-hand-pointer" style="margin-right:6px;color:#3b82f6"></i>Clique na barra de um dia no gráfico mensal para ver os registros e comentários daquele dia.</div>`;
+    return;
+  }
+
+  let disp=regs;
   if(dashDetailDate){
     disp=regs.filter(r=>r.data===dashDetailDate);
     if(badge){badge.style.display='inline-flex';lbl.textContent=fmtDate(dashDetailDate);}
@@ -1386,8 +1412,6 @@ function renderDetailTable(regs) {
   }
   // S1/S2: hint when comments exist on other dates within period
   const hasCommentsElsewhere=regs.some(r=>r.comentario&&!disp.includes(r));
-  const hintId='detail-comments-hint';
-  let hint=document.getElementById(hintId);
   if(hasCommentsElsewhere){
     if(!hint){hint=document.createElement('div');hint.id=hintId;hint.style.cssText='font-size:11px;color:#f59e0b;padding:6px 14px;border-bottom:1px solid var(--border-lt)';el.parentNode.insertBefore(hint,el);}
     hint.innerHTML='<i class="fas fa-comment-dots" style="margin-right:4px"></i>Há comentários em outras datas do período — clique nas barras do gráfico mensal (marcadas com 💬) para visualizá-los.';
@@ -1443,7 +1467,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.9_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.0_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
