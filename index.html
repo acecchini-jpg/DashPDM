@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v1.8</title>
+<title>PDM KPI Tracking v1.9</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.8</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v1.9</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -472,6 +472,10 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
         <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-settings');switchTab('cadastro')"><i class="fas fa-sliders"></i> Parâmetros</button>
       </div>
       <p style="font-size:10px;color:var(--tx3);margin-top:7px;margin-bottom:10px;line-height:1.5">Os dados vêm da importação do Excel — use Entrada/Parâmetros só para correções pontuais sem reimportar a planilha.</p>
+      <div style="border-top:1px solid var(--border-lt);padding-top:10px;margin-bottom:10px">
+        <button class="btn btn-ghost btn-sm" onclick="fbForceFullReupload()" style="width:100%;justify-content:center"><i class="fas fa-cloud-arrow-up"></i> Forçar Reenvio Completo pra Nuvem</button>
+        <p style="font-size:10px;color:var(--tx3);margin-top:6px;line-height:1.5">A importação normal só envia os últimos ~7 dias (economiza cota). Use isto se corrigiu algo num mês antigo da planilha e precisa reenviar tudo.</p>
+      </div>
       <div style="border-top:1px solid var(--border-lt);padding-top:10px">
         <button class="btn btn-danger btn-sm" onclick="closeModal('modal-settings');openResetModal()"><i class="fas fa-trash-can"></i> Apagar Todos os Dados</button>
       </div>
@@ -500,7 +504,7 @@ let showSecundarios=localStorage.getItem('pdm_show_sec')==='true';
 let chartAnual=null,chartMensal=null;
 const sparkCharts={};
 let currentChartIndId=null,currentChartAno=null,currentChartMes=null;
-let dashDetailDate=null,_lastRegs=[],_lastIndMap={},_importJustDone=false,_activeTab='dashboard';
+let dashDetailDate=null,_lastRegs=[],_lastIndMap={},_importJustDone=false,_activeTab='dashboard',_lastImportResult=null;
 let _relRenderToken=0; // for async cancel
 
 // §2 UTILS
@@ -734,6 +738,7 @@ async function handleFileImport(file) {
     const result = parsePDMExcelJS(workbook);
     p(65,'Processando objetivos mensais...');
     enrichObjExcelJS(workbook, result);
+    _lastImportResult = result; // guarda pra permitir "Forçar reenvio completo" depois, sem reimportar
     p(85,`Salvando ${result.registros.length.toLocaleString('pt-BR')} registros...`);
     await new Promise(r=>setTimeout(r,50)); // S8: let UI paint before sync localStorage write
     DB.areas=result.areas; DB.indicadores=result.indicadores; DB.objetivos=result.objetivos; DB.registros=result.registros;
@@ -855,12 +860,15 @@ function parsePDMExcelJS(workbook) {
     if (dir === -1 || dir === -2) tipoMeta = 'menor-melhor';
     else if (dir === 'OK' || String(objVal || '').toUpperCase() === 'OK') tipoMeta = 'ok-nok';
 
+    // Módulo 2 (±2) na coluna D = indicador semanal (atualizado só às terças, por convenção da planilha)
+    const periodicidade = (Math.abs(Number(dir))===2) ? 'semanal' : 'diaria';
+
     const numFmt = cellC.numFmt || '';
     const isPercentual = tipoMeta !== 'ok-nok' && numFmt.includes('%');
     const secundario = !isCellBluePrimary(cellC);
 
     if (!aM[areaNome]) { const a={id:stableId('a_',areaNome),nome:areaNome,ordem:areaOrdem++}; areas.push(a); aM[areaNome]=a.id; }
-    const ind = {id:stableId('i_',areaNome+'|'+indNome),areaId:aM[areaNome],nome:indNome,tipoMeta,unidadeMedida:isPercentual?'%':'',secundario,percentual:isPercentual,agregacao,ordem:indOrdem++};
+    const ind = {id:stableId('i_',areaNome+'|'+indNome),areaId:aM[areaNome],nome:indNome,tipoMeta,unidadeMedida:isPercentual?'%':'',secundario,percentual:isPercentual,agregacao,periodicidade,ordem:indOrdem++};
     inds.push(ind);
     if (objVal !== null && objVal !== undefined)
       objs.push({id:stableId('o_',ind.id+'|2025-01-01'),indicadorId:ind.id,valor:objVal,dataInicio:'2025-01-01'});
@@ -1093,11 +1101,25 @@ function renderDashboard(){
 }
 
 // §7 SPARKLINE CARDS (Feature 8)
+// Encontra a última terça-feira (dia 2 no getDay()) na data ou antes dela —
+// usado pra saber "qual era o dia esperado de atualização" de indicadores semanais.
+function ultimaTercaAteA(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = d.getDay(); // 0=Dom...6=Sáb
+  const diff = (dow - 2 + 7) % 7;
+  d.setDate(d.getDate()-diff);
+  return d.toISOString().slice(0,10);
+}
+
 function buildSparklineCards(inds) {
   Object.keys(sparkCharts).forEach(k=>{try{sparkCharts[k].destroy();}catch{}delete sparkCharts[k];});
   const el=document.getElementById('spark-cards');
   if(!inds.length){el.innerHTML='';return;}
   const dk=document.documentElement.getAttribute('data-theme')==='dark';
+
+  // Dia de referência: o dia mais recente com QUALQUER dado, entre TODOS os indicadores
+  // (não só os que estão sendo exibidos agora) — normalmente é "ontem".
+  const diaReferencia = DB.registros.reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
 
   el.innerHTML=inds.map(ind=>{
     const regsInd=DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
@@ -1105,6 +1127,13 @@ function buildSparklineCards(inds) {
     const meta=latest?getMetaParaData(ind.id,latest.data):null;
     const st=latest?getStatus(ind.tipoMeta,latest.valor,meta?meta.valor:null):'nd';
     const valColor=st==='ok'?'#10b981':st==='nok'?'#ef4444':'#6b7280';
+
+    // PONTO 4 (híbrido): indicador semanal (periodicidade==='semanal', módulo 2 na
+    // coluna D) só "deveria" estar atualizado até a última terça — não a terças,
+    // é normal estar "atrasado" em relação ao dia de referência geral, sem ser bug.
+    const diaEsperado = (ind.periodicidade==='semanal') ? ultimaTercaAteA(diaReferencia) : diaReferencia;
+    const estaEmDia = !latest || latest.data===diaEsperado;
+    const badgeData = (!estaEmDia && latest) ? `<span style="font-size:8px;color:#f59e0b;font-weight:700;margin-left:4px;white-space:nowrap">${fmtDate(latest.data)}</span>` : '';
 
     // FIX 2: Primary=white bg, Secondary=gray bg
     const cardBg  = ind.secundario ? (dk?'#374151':'#e5e7eb') : '#ffffff';
@@ -1117,7 +1146,7 @@ function buildSparklineCards(inds) {
 
     return`<div style="background:${cardBg};border:1px solid ${borderC};border-left:3px solid ${borderC};border-radius:7px;padding:7px 9px;cursor:pointer;transition:box-shadow .18s;overflow:hidden" onclick="drillDown('${ind.id}')" title="${cardTitle}" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'" onmouseout="this.style.boxShadow=''">
       <div style="font-size:9px;font-weight:700;color:${txColor};display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;min-height:22px;margin-bottom:2px;word-break:break-word">${ind.nome}${ind.secundario?`<span style="margin-left:5px;font-size:9px;background:${dk?'#4b5563':'#d1d5db'};color:${dk?'#9ca3af':'#6b7280'};border-radius:10px;padding:1px 5px">2°</span>`:''}</div>
-      <div style="font-size:15px;font-weight:800;color:${valColor};line-height:1;margin:2px 0">${latest?fmtVal(latest.valor,ind):'—'}</div>
+      <div style="font-size:15px;font-weight:800;color:${valColor};line-height:1;margin:2px 0">${latest?fmtVal(latest.valor,ind):'—'}${badgeData}</div>
       <div style="font-size:10px;color:${txMuted}">Meta: ${meta?fmtVal(meta.valor,ind):'N/D'}</div>
       <div style="height:42px;margin-top:6px"><canvas id="spark-c-${ind.id}"></canvas></div>
     </div>`;
@@ -1414,7 +1443,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.8_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v1.9_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1859,12 +1888,29 @@ function fbLastNMonths(n){
   return out;
 }
 
-// Pull: areas/indicadores/objetivos/gemba (full, low volume) + registros dos últimos 3 meses (bucketed)
+// Meses necessários para cobrir "últimos ~7 dias": o mês corrente sempre;
+// o mês anterior só se estivermos nos primeiros 7 dias do mês atual (cobre
+// virada de mês, ex: segunda-feira 03 precisando de sexta 28/29/30/31 do mês anterior).
+function fbMonthsUltimos7Dias(){
+  const now=new Date();
+  const months=[`${now.getFullYear()}-${padM(now.getMonth()+1)}`];
+  if(now.getDate()<=7){
+    const prev=new Date(now.getFullYear(), now.getMonth()-1, 1);
+    months.push(`${prev.getFullYear()}-${padM(prev.getMonth()+1)}`);
+  }
+  return months;
+}
+
+// Pull: areas/indicadores/objetivos (full, low volume) + registros —
+// navegador vazio (primeira vez) puxa TUDO; navegador com dados puxa só ~7 dias.
 async function fbSyncNow(){
   if(!fbDb){ showToast('Conecte-se primeiro (Salvar e Conectar)','error'); return; }
   fbSetStatus('Sincronizando...', '#f59e0b', true);
   console.log('[fbSyncNow] iniciando... fbUser:', fbUser ? fbUser.email : 'NENHUM (não autenticado!)');
   try{
+    const browserVazio = DB.areas.length===0 && DB.indicadores.length===0;
+    console.log('[fbSyncNow] navegador vazio (primeira sincronização)?', browserVazio);
+
     const [areasSnap, indsSnap, objsSnap] = await Promise.all([
       fbDb.collection('areas').get(),
       fbDb.collection('indicadores').get(),
@@ -1877,9 +1923,16 @@ async function fbSyncNow(){
     const objs  = objsSnap.docs.map(d=>({id:d.id, ...d.data()}));
     console.log('[fbSyncNow] areas:', areas.length, '| indicadores:', inds.length, '| objetivos:', objs.length);
 
-    const months = fbLastNMonths(3);
-    console.log('[fbSyncNow] buscando registros para os meses:', months);
-    const regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
+    let regBuckets, months;
+    if(browserVazio){
+      console.log('[fbSyncNow] navegador vazio — buscando TODO o histórico de registros');
+      regBuckets = await fbDb.collection('registros').get();
+      months = null; // sem filtro de mês — trouxe tudo
+    } else {
+      months = fbMonthsUltimos7Dias();
+      console.log('[fbSyncNow] buscando registros para os meses:', months);
+      regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
+    }
     console.log('[fbSyncNow] documentos de registros encontrados:', regBuckets.size);
     const registros = [];
     regBuckets.docs.forEach(doc=>{
@@ -1891,8 +1944,9 @@ async function fbSyncNow(){
     });
     console.log('[fbSyncNow] registros individuais reconstruídos:', registros.length);
 
-    // Mantém histórico local de meses fora da janela sincronizada; substitui os 3 meses recentes pela nuvem
-    const localOlder = DB.registros.filter(r => !months.includes(r.data.slice(0,7)));
+    // Mantém histórico local de meses fora da janela sincronizada; substitui os meses recentes pela nuvem
+    // (se buscou tudo, não sobra "localOlder" — a lista da nuvem já é a fonte completa)
+    const localOlder = months ? DB.registros.filter(r => !months.includes(r.data.slice(0,7))) : [];
     console.log('[fbSyncNow] registros locais de meses antigos preservados:', localOlder.length);
     if(areas.length) DB.areas = areas;
     if(inds.length)  DB.indicadores = inds;
@@ -2004,10 +2058,29 @@ function fbPushObjetivo(obj){ if(!fbDb) return; fbDb.collection('objetivos').doc
 
 function fbDeleteDoc(col,id){ if(!fbDb) return; fbDb.collection(col).doc(id).delete().catch(e=>console.warn('fbDeleteDoc',e)); }
 
-// Envia o resultado completo de uma importação Excel para o Firebase.
-// Áreas/indicadores/objetivos: coleções pequenas, gravadas por completo (substituem os documentos existentes por ID).
-// Registros: usa o mesmo bucketing por indicador+mês do fbPushRegistros, mas em lotes (batch) para eficiência.
-async function fbPushImportedData(result){
+async function fbForceFullReupload(){
+  if(!_lastImportResult){ showToast('Nenhuma importação recente em memória — importe o Excel de novo primeiro.','error'); return; }
+  if(!fbDb){ showToast('Conecte-se à nuvem primeiro.','error'); return; }
+  if(!confirm(`Isso vai reenviar TODOS os meses da última planilha importada (${_lastImportResult.registros.length.toLocaleString('pt-BR')} registros) para a nuvem.\n\nPode levar alguns segundos. Continuar?`)) return;
+  closeModal('modal-settings');
+  showToast('Reenviando histórico completo para a nuvem...','success');
+  if (fbUnsubRegistros) { fbUnsubRegistros(); fbUnsubRegistros = null; }
+  try{
+    await fbPushImportedData(_lastImportResult, {fullPush:true});
+    showToast('Reenvio completo concluído!','success');
+  }catch(e){
+    showToast('Erro no reenvio completo: '+e.message,'error');
+  }finally{
+    if (fbUser) fbStartRealtimeSync();
+  }
+}
+
+// Envia o resultado de uma importação Excel para o Firebase.
+// Áreas/indicadores/objetivos: coleções pequenas, gravadas por completo sempre (substituem os documentos existentes por ID).
+// Registros: por padrão, envia só os ~7 dias mais recentes (fbMonthsUltimos7Dias) — evita
+// reenviar a planilha inteira toda importação, economizando cota do Firestore. Passe
+// {fullPush:true} para reenviar TODOS os meses (usado pelo botão "Forçar reenvio completo").
+async function fbPushImportedData(result, opts={}){
   if(!fbDb) return;
   try{
     // Áreas, indicadores e objetivos — poucos documentos, grava tudo com Promise.all
@@ -2018,9 +2091,14 @@ async function fbPushImportedData(result){
     ];
     await Promise.all(smallWrites);
 
+    // Registros — por padrão, só os meses recentes; {fullPush:true} envia tudo
+    const monthsToSend = opts.fullPush ? null : fbMonthsUltimos7Dias();
+    const regsToSend = monthsToSend ? result.registros.filter(r=>monthsToSend.includes(r.data.slice(0,7))) : result.registros;
+    console.log('[fbPushImportedData] modo:', opts.fullPush?'REENVIO COMPLETO':'apenas últimos ~7 dias', '| meses:', monthsToSend||'(todos)', '| registros a enviar:', regsToSend.length, 'de', result.registros.length, 'totais no parse');
+
     // Registros — agrupa por indicador+mês (bucket) e grava em lotes de até 400 (limite do batch é 500)
     const byBucket = {};
-    result.registros.forEach(r=>{
+    regsToSend.forEach(r=>{
       const anoMes = r.data.slice(0,7), dd = r.data.slice(8,10);
       const key = `${r.indicadorId}_${anoMes}`;
       if(!byBucket[key]) byBucket[key] = {indicadorId:r.indicadorId, anoMes, dias:{}};
