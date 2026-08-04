@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v2.1</title>
+<title>PDM KPI Tracking v2.2</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.1</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.2</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -742,6 +742,7 @@ async function handleFileImport(file) {
     p(85,`Salvando ${result.registros.length.toLocaleString('pt-BR')} registros...`);
     await new Promise(r=>setTimeout(r,50)); // S8: let UI paint before sync localStorage write
     DB.areas=result.areas; DB.indicadores=result.indicadores; DB.objetivos=result.objetivos; DB.registros=result.registros;
+    invalidateLatestMapCache();
     p(100,'Concluído!');
     const prim=result.indicadores.filter(i=>!i.secundario).length;
     const sec =result.indicadores.filter(i=> i.secundario).length;
@@ -814,14 +815,6 @@ function parsePDMExcelJS(workbook) {
 
   if (dateCols.length === 0) throw new Error(`Nenhuma coluna de data encontrada na linha ${DATE_ROW} a partir da coluna ${DATA_START_COL}. Verifique a estrutura do arquivo.`);
 
-  // DIAGNÓSTICO: mostra quantas colunas de data foram achadas e o intervalo real
-  const datasOrdenadas = dateCols.map(d=>d.date).sort();
-  console.log('[parsePDMExcelJS] colunas de data detectadas:', dateCols.length);
-  console.log('[parsePDMExcelJS] primeira data:', datasOrdenadas[0], '| última data:', datasOrdenadas[datasOrdenadas.length-1]);
-  const curMonthStr = new Date().toISOString().slice(0,7);
-  const colsDoMesAtual = dateCols.filter(d=>d.date.startsWith(curMonthStr));
-  console.log(`[parsePDMExcelJS] colunas do mês corrente (${curMonthStr}):`, colsDoMesAtual.length, colsDoMesAtual.map(d=>d.date));
-
   const areas = [], inds = [], objs = [], regs = [], aM = {};
   let areaOrdem = 0, indOrdem = 0; // preserva a ordem original da planilha
 
@@ -873,52 +866,16 @@ function parsePDMExcelJS(workbook) {
     if (objVal !== null && objVal !== undefined)
       objs.push({id:stableId('o_',ind.id+'|2025-01-01'),indicadorId:ind.id,valor:objVal,dataInicio:'2025-01-01'});
 
-    // DIAGNÓSTICO: rastreia motivo de descarte de cada célula do mês corrente, por linha
-    const curMonthTrace = new Date().toISOString().slice(0,7);
-    let _diagSemCelula=0, _diagVazio=0, _diagData=0, _diagTextoLongo=0, _diagOk=0;
-
     for (const {col, date} of dateCols) {
-      const isMesAtual = date.startsWith(curMonthTrace);
       const cell = rowCells[col];
-      if (!cell) { if(isMesAtual)_diagSemCelula++; continue; }
+      if (!cell) continue;
       let cellVal = resolveCell(cell);
-      if (cellVal === null || cellVal === undefined) { if(isMesAtual)_diagVazio++; continue; }
-      if (cellVal instanceof Date) { if(isMesAtual)_diagData++; continue; } // skip accidental date values in data
-      if (typeof cellVal === 'string' && cellVal.length > 50) { if(isMesAtual)_diagTextoLongo++; continue; }
-      if(isMesAtual)_diagOk++;
+      if (cellVal === null || cellVal === undefined) continue;
+      if (cellVal instanceof Date) continue; // skip accidental date values in data
+      if (typeof cellVal === 'string' && cellVal.length > 50) continue;
       regs.push({id:uid(), indicadorId:ind.id, data:date, valor:cellVal, comentario:extractNote(cell)});
     }
-    if(_diagSemCelula+_diagVazio+_diagData+_diagTextoLongo>0 && _diagOk===0){
-      console.log(`[parsePDMExcelJS] "${indNome}" (linha ${rowNum}) — 0 células válidas em ${curMonthTrace}. Motivos: semCelula=${_diagSemCelula} vazio=${_diagVazio} eraData=${_diagData} textoLongo=${_diagTextoLongo}`);
-    }
   });
-
-  // DIAGNÓSTICO: quantos registros do mês corrente sobreviveram até o final do parse
-  const curMonthStr2 = new Date().toISOString().slice(0,7);
-  const regsMesAtual = regs.filter(r=>r.data.startsWith(curMonthStr2));
-  console.log(`[parsePDMExcelJS] registros gerados para o mês corrente (${curMonthStr2}):`, regsMesAtual.length, '| total geral:', regs.length);
-
-  // DIAGNÓSTICO DETALHADO: tabela por indicador — quantos registros de cada mês
-  // cada um tem, e quantas VEZES cada indicador foi criado (detecta duplicatas
-  // de nome/área que dividiriam os dados entre "cópias" do mesmo indicador).
-  const diagPorIndicador = {};
-  inds.forEach(ind => {
-    if(!diagPorIndicador[ind.id]) diagPorIndicador[ind.id] = {nome: ind.nome, area: ind.areaId, ocorrenciasNoParse: 0, totalRegs: 0, regsMesAtual: 0};
-    diagPorIndicador[ind.id].ocorrenciasNoParse++;
-  });
-  regs.forEach(r => {
-    if(diagPorIndicador[r.indicadorId]){
-      diagPorIndicador[r.indicadorId].totalRegs++;
-      if(r.data.startsWith(curMonthStr2)) diagPorIndicador[r.indicadorId].regsMesAtual++;
-    }
-  });
-  const linhasSuspeitas = Object.entries(diagPorIndicador)
-    .filter(([id,d]) => d.ocorrenciasNoParse > 1 || (d.totalRegs > 0 && d.regsMesAtual === 0))
-    .map(([id,d]) => ({id, ...d}));
-  console.log(`[parsePDMExcelJS] indicadores com 0 registros em ${curMonthStr2} (mas com dado em outros meses) OU duplicados no parse:`, linhasSuspeitas.length);
-  if(linhasSuspeitas.length) console.table(linhasSuspeitas);
-  console.log('[parsePDMExcelJS] tabela completa de todos os indicadores:');
-  console.table(Object.entries(diagPorIndicador).map(([id,d])=>({id,...d})));
 
   return {areas, indicadores:inds, objetivos:objs, registros:regs, _dateCols:dateCols.length};
 }
@@ -1114,24 +1071,44 @@ function ultimaTercaAteA(dateStr){
 // Dia de referência global — MODA (dia mais frequente entre os últimos registros de
 // cada indicador diário), calculado sobre TODOS os indicadores do sistema (não só os
 // filtrados na tela), pra ficar estável independente do que está sendo exibido no momento.
-function computeDiaReferencia(){
+// PERFORMANCE: DB.registros é um getter que decodifica o localStorage inteiro (JSON.parse
+// de milhares de registros) a cada acesso — chamá-lo repetidamente dentro de um loop por
+// indicador (95+ vezes) era o principal motivo da lentidão ao clicar no sparkline.
+// Esta função lê DB.registros UMA única vez e monta um mapa indicadorId -> último
+// registro, que todas as funções de "atraso" abaixo reaproveitam.
+let _latestMapCache=null, _latestMapCacheLen=-1;
+function buildLatestRegistroMap(){
+  const registros = DB.registros; // 1 única leitura/decodificação do localStorage
+  if(_latestMapCache && _latestMapCacheLen===registros.length) return _latestMapCache; // cache válido no mesmo tick
+  const map = {};
+  registros.forEach(r=>{
+    const cur = map[r.indicadorId];
+    if(!cur || r.data > cur.data) map[r.indicadorId] = r;
+  });
+  _latestMapCache = map; _latestMapCacheLen = registros.length;
+  return map;
+}
+// Invalida o cache sempre que DB.registros for reescrito (chamar após qualquer sync/import)
+function invalidateLatestMapCache(){ _latestMapCache=null; _latestMapCacheLen=-1; }
+
+function computeDiaReferencia(latestMap){
+  latestMap = latestMap || buildLatestRegistroMap();
   const contagem = {};
   DB.indicadores.forEach(ind=>{
     if(ind.periodicidade==='semanal') return;
-    const regsInd = DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
-    const lat = regsInd[regsInd.length-1];
+    const lat = latestMap[ind.id];
     if(lat) contagem[lat.data] = (contagem[lat.data]||0)+1;
   });
   return Object.entries(contagem).sort((a,b)=>b[1]-a[1])[0]?.[0]
-    || DB.registros.reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
+    || Object.values(latestMap).reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
 }
 
 // Verifica se um indicador específico está "atrasado" em relação ao dia de referência
 // (respeitando indicadores semanais, que só precisam estar em dia até a última terça).
-function indEstaAtrasado(ind, diaReferencia){
-  if(!diaReferencia) diaReferencia = computeDiaReferencia();
-  const regsInd = DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
-  const latest = regsInd[regsInd.length-1];
+function indEstaAtrasado(ind, diaReferencia, latestMap){
+  latestMap = latestMap || buildLatestRegistroMap();
+  if(!diaReferencia) diaReferencia = computeDiaReferencia(latestMap);
+  const latest = latestMap[ind.id] || null;
   if(!latest) return {atrasado:false, latest:null, diaEsperado:diaReferencia};
   const diaEsperado = (ind.periodicidade==='semanal') ? ultimaTercaAteA(diaReferencia) : diaReferencia;
   return {atrasado: latest.data!==diaEsperado, latest, diaEsperado};
@@ -1143,12 +1120,14 @@ function buildSparklineCards(inds) {
   if(!inds.length){el.innerHTML='';return;}
   const dk=document.documentElement.getAttribute('data-theme')==='dark';
 
-  // Dia de referência calculado uma vez (função compartilhada — mesma lógica usada
-  // nos gráficos Anual/Mensal e na borda dos comentários, pra ficar tudo consistente).
-  const diaReferencia = computeDiaReferencia();
+  // PERFORMANCE: monta o mapa "último registro por indicador" UMA vez aqui (1 leitura
+  // de DB.registros), e reaproveita pra todos os 95 indicadores — evita repetir a
+  // decodificação do localStorage centenas de vezes a cada clique no sparkline.
+  const latestMap = buildLatestRegistroMap();
+  const diaReferencia = computeDiaReferencia(latestMap);
 
   el.innerHTML=inds.map(ind=>{
-    const {atrasado:estaAtrasado, latest} = indEstaAtrasado(ind, diaReferencia);
+    const {atrasado:estaAtrasado, latest} = indEstaAtrasado(ind, diaReferencia, latestMap);
     const meta=latest?getMetaParaData(ind.id,latest.data):null;
     const st=latest?getStatus(ind.tipoMeta,latest.valor,meta?meta.valor:null):'nd';
 
@@ -1447,6 +1426,8 @@ function renderDetailTable(regs) {
     el.innerHTML=`<div style="text-align:center;color:var(--tx3);padding:28px;font-size:13px">Nenhum registro no período selecionado</div>`;
     return;
   }
+  const _latestMapDetail = buildLatestRegistroMap(); // 1 leitura reaproveitada por todos os registros abaixo
+  const _diaRefDetail = computeDiaReferencia(_latestMapDetail);
   el.innerHTML=disp.slice(0,200).map(r=>{
     const ind =DB.indicadores.find(i=>i.id===r.indicadorId);
     const area=ind?DB.areas.find(a=>a.id===ind.areaId):null;
@@ -1454,7 +1435,7 @@ function renderDetailTable(regs) {
     const st  =ind?getStatus(ind.tipoMeta,r.valor,meta?meta.valor:null):'nd';
     // Se o indicador desse registro está atrasado, a borda do card fica cinza também
     // (mesma lógica compartilhada dos sparklines/gráficos) — não colorida por status.
-    const cardAtrasado = ind ? indEstaAtrasado(ind).atrasado : false;
+    const cardAtrasado = ind ? indEstaAtrasado(ind, _diaRefDetail, _latestMapDetail).atrasado : false;
     const stBorderColor=cardAtrasado?'#6b7280':(st==='ok'?'#10b981':st==='nok'?'#ef4444':'var(--border)');
     const stBg         =cardAtrasado?(document.documentElement.getAttribute('data-theme')==='dark'?'#37415122':'#f3f4f622'):(st==='ok'?'#064e3b22':st==='nok'?'#7f1d1d22':'transparent');
     // Header fields row
@@ -1496,7 +1477,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.1_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.2_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
@@ -1599,7 +1580,7 @@ function saveGerenteRecords(){
     pushBatch.push(novoReg);
     saved++;
   });
-  DB.registros=regs;showToast(`${saved} registros salvos!${skip?` (${skip} em branco)`:''}`,'success');
+  DB.registros=regs;invalidateLatestMapCache();showToast(`${saved} registros salvos!${skip?` (${skip} em branco)`:''}`,'success');
   renderGerenteIndicadores();
   fbPushRegistros(pushBatch);
 }
@@ -1844,7 +1825,7 @@ function switchTab(tab){
 // §14 MISC
 function closeModal(id){document.getElementById(id).style.display='none';}
 function openResetModal(){document.getElementById('modal-reset').style.display='flex';}
-function resetAllData(){DB.clear();closeModal('modal-reset');showToast('Dados apagados','success');switchTab('dashboard');}
+function resetAllData(){DB.clear();invalidateLatestMapCache();closeModal('modal-reset');showToast('Dados apagados','success');switchTab('dashboard');}
 let _tt=null;
 function showToast(msg,type='success'){
   const t=document.getElementById('toast'),ic=document.getElementById('toast-icon'),tm=document.getElementById('toast-msg');
@@ -1959,10 +1940,8 @@ function fbMonthsUltimos7Dias(){
 async function fbSyncNow(){
   if(!fbDb){ showToast('Conecte-se primeiro (Salvar e Conectar)','error'); return; }
   fbSetStatus('Sincronizando...', '#f59e0b', true);
-  console.log('[fbSyncNow] iniciando... fbUser:', fbUser ? fbUser.email : 'NENHUM (não autenticado!)');
   try{
     const browserVazio = DB.areas.length===0 && DB.indicadores.length===0;
-    console.log('[fbSyncNow] navegador vazio (primeira sincronização)?', browserVazio);
 
     const [areasSnap, indsSnap, objsSnap] = await Promise.all([
       fbDb.collection('areas').get(),
@@ -1974,19 +1953,15 @@ async function fbSyncNow(){
     const areas = areasSnap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.ordem??0)-(b.ordem??0));
     const inds  = indsSnap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.ordem??0)-(b.ordem??0));
     const objs  = objsSnap.docs.map(d=>({id:d.id, ...d.data()}));
-    console.log('[fbSyncNow] areas:', areas.length, '| indicadores:', inds.length, '| objetivos:', objs.length);
 
     let regBuckets, months;
     if(browserVazio){
-      console.log('[fbSyncNow] navegador vazio — buscando TODO o histórico de registros');
       regBuckets = await fbDb.collection('registros').get();
       months = null; // sem filtro de mês — trouxe tudo
     } else {
       months = fbMonthsUltimos7Dias();
-      console.log('[fbSyncNow] buscando registros para os meses:', months);
       regBuckets = await fbDb.collection('registros').where('anoMes','in', months).get();
     }
-    console.log('[fbSyncNow] documentos de registros encontrados:', regBuckets.size);
     const registros = [];
     regBuckets.docs.forEach(doc=>{
       const data=doc.data(); const indId=data.indicadorId; const dias=extractDiasFields(data);
@@ -1995,18 +1970,14 @@ async function fbSyncNow(){
         registros.push({id:`${indId}_${data.anoMes}-${dd}`, indicadorId:indId, data:`${data.anoMes}-${dd}`, valor:entry.v, comentario:entry.c||''});
       });
     });
-    console.log('[fbSyncNow] registros individuais reconstruídos:', registros.length);
-
     // Mantém histórico local de meses fora da janela sincronizada; substitui os meses recentes pela nuvem
     // (se buscou tudo, não sobra "localOlder" — a lista da nuvem já é a fonte completa)
     const localOlder = months ? DB.registros.filter(r => !months.includes(r.data.slice(0,7))) : [];
-    console.log('[fbSyncNow] registros locais de meses antigos preservados:', localOlder.length);
     if(areas.length) DB.areas = areas;
     if(inds.length)  DB.indicadores = inds;
     if(objs.length)  DB.objetivos = objs;
     DB.registros = [...localOlder, ...registros];
-    console.log('[fbSyncNow] DB.registros final (total):', DB.registros.length);
-
+    invalidateLatestMapCache();
     fbSetStatus('Sincronizado — '+new Date().toLocaleTimeString('pt-BR'), '#10b981', true);
     showToast('Dados sincronizados com a nuvem!','success');
     if(_activeTab==='dashboard') renderDashboard();
@@ -2052,7 +2023,7 @@ async function fbLoadFullHistory(){
       showToast('Nenhum registro encontrado nos documentos da nuvem — dados locais mantidos intactos.','error');
       return;
     }
-    DB.registros = registros; // substitui totalmente — essa é a fonte completa da nuvem
+    DB.registros = registros; invalidateLatestMapCache(); // substitui totalmente — essa é a fonte completa da nuvem
     showToast(`Histórico completo carregado! ${registros.length.toLocaleString('pt-BR')} registros.`,'success');
     if(_activeTab==='dashboard') renderDashboard();
     else if(_activeTab==='relatorio') renderRelatorio();
@@ -2076,10 +2047,8 @@ function fbStartRealtimeSync(){
       // após criar o listener). Só aceita dados já confirmados pelo servidor — evita que
       // um snapshot incompleto sobrescreva dados corretos trazidos pela sincronização.
       if(snap.metadata.fromCache){
-        console.log('[fbRealtimeSync] snapshot do cache ignorado (aguardando confirmação do servidor)');
         return;
       }
-      console.log('[fbRealtimeSync] snapshot do servidor confirmado —', snap.docChanges().length, 'mudanças');
       // FIX CRÍTICO: DB.registros é um getter que lê do localStorage a cada acesso —
       // devolve um array NOVO e descartável toda vez. "DB.registros.push(x)" empurra
       // o item nesse array temporário, que é jogado fora sem nunca ser salvo de volta.
@@ -2097,8 +2066,7 @@ function fbStartRealtimeSync(){
           regsAtualizados.push({id:`${indId}_${curMonth}-${dd}`, indicadorId:indId, data:`${curMonth}-${dd}`, valor:entry.v, comentario:entry.c||''});
         });
       });
-      DB.registros = regsAtualizados; // única gravação real no localStorage
-      console.log('[fbRealtimeSync] DB.registros após atualização — total:', DB.registros.length);
+      DB.registros = regsAtualizados; invalidateLatestMapCache(); // única gravação real no localStorage
       if(_activeTab==='dashboard') renderDashboard();
     }, err=>{ console.error('[fbRealtimeSync] ERRO:', err); });
 }
@@ -2147,7 +2115,6 @@ async function fbPushImportedData(result, opts={}){
     // Registros — por padrão, só os meses recentes; {fullPush:true} envia tudo
     const monthsToSend = opts.fullPush ? null : fbMonthsUltimos7Dias();
     const regsToSend = monthsToSend ? result.registros.filter(r=>monthsToSend.includes(r.data.slice(0,7))) : result.registros;
-    console.log('[fbPushImportedData] modo:', opts.fullPush?'REENVIO COMPLETO':'apenas últimos ~7 dias', '| meses:', monthsToSend||'(todos)', '| registros a enviar:', regsToSend.length, 'de', result.registros.length, 'totais no parse');
 
     // Registros — agrupa por indicador+mês (bucket) e grava em lotes de até 400 (limite do batch é 500)
     const byBucket = {};
@@ -2158,14 +2125,6 @@ async function fbPushImportedData(result, opts={}){
       byBucket[key].dias[dd] = {v:r.valor, c:r.comentario||''};
     });
     const bucketKeys = Object.keys(byBucket);
-    const curMonthDiag = new Date().toISOString().slice(0,7);
-    const bucketsDoMesAtual = bucketKeys.filter(k=>k.endsWith('_'+curMonthDiag));
-    console.log('[fbPushImportedData] total de buckets (indicador+mês) a enviar:', bucketKeys.length);
-    console.log(`[fbPushImportedData] buckets do mês corrente (${curMonthDiag}):`, bucketsDoMesAtual.length);
-    if(bucketsDoMesAtual.length){
-      const exemplo = byBucket[bucketsDoMesAtual[0]];
-      console.log('[fbPushImportedData] exemplo —', bucketsDoMesAtual[0], '| dias incluídos:', Object.keys(exemplo.dias).length, Object.keys(exemplo.dias));
-    }
     const CHUNK = 400;
     let lotesEnviados = 0;
     for(let i=0; i<bucketKeys.length; i+=CHUNK){
@@ -2178,9 +2137,7 @@ async function fbPushImportedData(result, opts={}){
       });
       await batch.commit();
       lotesEnviados++;
-      console.log(`[fbPushImportedData] lote ${lotesEnviados} confirmado pelo servidor (${Math.min(i+CHUNK,bucketKeys.length)}/${bucketKeys.length} buckets)`);
     }
-    console.log('[fbPushImportedData] envio concluído — todos os lotes confirmados.');
   }catch(e){
     console.error('[fbPushImportedData] ERRO COMPLETO:', e);
     showToast('Dados salvos localmente, mas houve erro ao enviar à nuvem: '+e.message, 'error');
