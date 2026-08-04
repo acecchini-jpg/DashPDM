@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v2.2</title>
+<title>PDM KPI Tracking v2.5</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.2</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.5</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -663,18 +663,34 @@ function isCellBluePrimary(cell) {
 }
 
 /* ─── Note/comment extraction ─── */
+// Normaliza QUALQUER variante de quebra de linha para \n puro e remove TODA linha
+// que fique vazia (mesmo que "vazia" só depois de tirar espaços/tabs invisíveis no
+// meio da quebra — ex: "\n \n" — que um filtro simples de \n{2,} não pegaria).
+// Cobre o \r\n do Excel e também texto colado de outras ferramentas (ex: relatórios
+// tipo "Scrap IQ") que podem usar separadores Unicode (\u2028/\u2029) ou deixar
+// espaços residuais nas linhas "em branco" entre cada linha de conteúdo.
+function normalizeLineBreaks(s){
+  return String(s)
+    .replace(/\r\n/g, '\n')            // CRLF (Windows/Excel) -> LF
+    .replace(/\r/g, '\n')                // CR solto -> LF
+    .replace(/[\u2028\u2029]/g, '\n')   // separadores Unicode de linha/parágrafo -> LF
+    .split('\n')
+    .map(line => line.replace(/[ \t\u00A0]+$/,'').replace(/^[ \t\u00A0]+/,'')) // tira espaço/tab/nbsp nas pontas
+    .filter(line => line.length > 0)     // remove QUALQUER linha que sobre vazia
+    .join('\n');
+}
 function extractNote(cell) {
   try {
     const note = cell.note;
     if (!note) return '';
-    if (typeof note === 'string') return note.trim();
+    if (typeof note === 'string') return normalizeLineBreaks(note.trim());
     if (typeof note === 'object') {
       const t = note.texts;
       if (t !== undefined && t !== null) {
-        if (typeof t === 'string') return t.trim();
-        if (Array.isArray(t)) return t.map(x => (!x ? '' : typeof x === 'string' ? x : (x.text||''))).join('').trim();
+        if (typeof t === 'string') return normalizeLineBreaks(t.trim());
+        if (Array.isArray(t)) return normalizeLineBreaks(t.map(x => (!x ? '' : typeof x === 'string' ? x : (x.text||''))).join('').trim());
       }
-      if (note.note) return String(note.note).trim();
+      if (note.note) return normalizeLineBreaks(String(note.note).trim());
     }
   } catch(e) {}
   return '';
@@ -1477,7 +1493,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.2_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.5_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
