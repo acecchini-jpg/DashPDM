@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PDM KPI Tracking v2.0</title>
+<title>PDM KPI Tracking v2.1</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -114,7 +114,7 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="week"]::-webki
 <nav class="navwrap"><div style="max-width:1400px;margin:0 auto;padding:0 14px;display:flex;align-items:center">
   <div style="display:flex;align-items:center;gap:9px;padding:11px 0;margin-right:18px;flex-shrink:0">
     <div style="width:30px;height:30px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chart-line" style="color:#fff;font-size:13px"></i></div>
-    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.0</span>
+    <span style="font-weight:800;font-size:14px;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">PDM KPI</span><span style="font-size:9px;color:#64748b;margin-left:4px;font-family:monospace;letter-spacing:0">v2.1</span>
   </div>
   <div style="display:flex;overflow-x:auto;flex:1;scrollbar-width:none">
     <button class="nav-tab active" onclick="switchTab('dashboard')" id="tab-dashboard"><i class="fas fa-gauge-high" style="margin-right:5px"></i>Dashboard</button>
@@ -1111,35 +1111,46 @@ function ultimaTercaAteA(dateStr){
   return d.toISOString().slice(0,10);
 }
 
+// Dia de referência global — MODA (dia mais frequente entre os últimos registros de
+// cada indicador diário), calculado sobre TODOS os indicadores do sistema (não só os
+// filtrados na tela), pra ficar estável independente do que está sendo exibido no momento.
+function computeDiaReferencia(){
+  const contagem = {};
+  DB.indicadores.forEach(ind=>{
+    if(ind.periodicidade==='semanal') return;
+    const regsInd = DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
+    const lat = regsInd[regsInd.length-1];
+    if(lat) contagem[lat.data] = (contagem[lat.data]||0)+1;
+  });
+  return Object.entries(contagem).sort((a,b)=>b[1]-a[1])[0]?.[0]
+    || DB.registros.reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
+}
+
+// Verifica se um indicador específico está "atrasado" em relação ao dia de referência
+// (respeitando indicadores semanais, que só precisam estar em dia até a última terça).
+function indEstaAtrasado(ind, diaReferencia){
+  if(!diaReferencia) diaReferencia = computeDiaReferencia();
+  const regsInd = DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
+  const latest = regsInd[regsInd.length-1];
+  if(!latest) return {atrasado:false, latest:null, diaEsperado:diaReferencia};
+  const diaEsperado = (ind.periodicidade==='semanal') ? ultimaTercaAteA(diaReferencia) : diaReferencia;
+  return {atrasado: latest.data!==diaEsperado, latest, diaEsperado};
+}
+
 function buildSparklineCards(inds) {
   Object.keys(sparkCharts).forEach(k=>{try{sparkCharts[k].destroy();}catch{}delete sparkCharts[k];});
   const el=document.getElementById('spark-cards');
   if(!inds.length){el.innerHTML='';return;}
   const dk=document.documentElement.getAttribute('data-theme')==='dark';
 
-  // Dia de referência: usa a MODA (dia mais FREQUENTE entre os últimos registros de
-  // cada indicador diário), não o máximo absoluto — evita marcar quase todo mundo como
-  // "atrasado" só porque um ou dois indicadores isolados adiantaram/atrasaram um dia.
-  const contagemDias = {};
-  inds.forEach(ind=>{
-    if(ind.periodicidade==='semanal') return; // semanais não participam da moda
-    const regsInd = DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
-    const lat = regsInd[regsInd.length-1];
-    if(lat) contagemDias[lat.data] = (contagemDias[lat.data]||0)+1;
-  });
-  const diaReferencia = Object.entries(contagemDias).sort((a,b)=>b[1]-a[1])[0]?.[0]
-    || DB.registros.reduce((mx,r)=>r.data>mx?r.data:mx, '0000-00-00');
+  // Dia de referência calculado uma vez (função compartilhada — mesma lógica usada
+  // nos gráficos Anual/Mensal e na borda dos comentários, pra ficar tudo consistente).
+  const diaReferencia = computeDiaReferencia();
 
   el.innerHTML=inds.map(ind=>{
-    const regsInd=DB.registros.filter(r=>r.indicadorId===ind.id).sort((a,b)=>a.data.localeCompare(b.data));
-    const latest=regsInd[regsInd.length-1];
+    const {atrasado:estaAtrasado, latest} = indEstaAtrasado(ind, diaReferencia);
     const meta=latest?getMetaParaData(ind.id,latest.data):null;
     const st=latest?getStatus(ind.tipoMeta,latest.valor,meta?meta.valor:null):'nd';
-
-    // PONTO 4 (híbrido): indicador semanal só "deveria" estar atualizado até a última
-    // terça — não é atraso real, é o ritmo normal dele.
-    const diaEsperado = (ind.periodicidade==='semanal') ? ultimaTercaAteA(diaReferencia) : diaReferencia;
-    const estaAtrasado = latest && latest.data!==diaEsperado;
 
     // Indicador atrasado: cartão em tons de cinza/preto, sem cor de status — só o aviso
     const valColor  = estaAtrasado ? (dk?'#9ca3af':'#4b5563') : (st==='ok'?'#10b981':st==='nok'?'#ef4444':'#6b7280');
@@ -1147,7 +1158,7 @@ function buildSparklineCards(inds) {
     const txColor   = estaAtrasado ? (dk?'#9ca3af':'#4b5563') : (ind.secundario ? (dk?'#9ca3af':'#6b7280') : '#111827');
     const txMuted   = estaAtrasado ? (dk?'#6b7280':'#9ca3af') : (ind.secundario ? (dk?'#6b7280':'#9ca3af') : '#374151');
     const borderC   = estaAtrasado ? (dk?'#4b5563':'#d1d5db') : (st==='ok'?'#10b981':st==='nok'?'#ef4444':'#d1d5db');
-    const avisoAtraso = estaAtrasado ? `<div style="font-size:9px;color:#ef4444;font-weight:700;margin-top:2px">⚠️ ${fmtDate(latest.data)}</div>` : '';
+    const avisoAtraso = (estaAtrasado && latest) ? `<div style="font-size:9px;color:#ef4444;font-weight:700;margin-top:2px">⚠️ ${fmtDate(latest.data)}</div>` : '';
 
     const lastComment=(()=>{const lr=[...DB.registros].filter(r=>r.indicadorId===ind.id&&r.comentario).sort((a,b)=>b.data.localeCompare(a.data));return lr.length?lr[0].comentario:'';})();
     const cardTitle=lastComment?`${ind.nome} — 💬 ${lastComment.slice(0,120)}`:ind.nome;
@@ -1200,7 +1211,9 @@ function buildChartAnual(ind, ano) {
   const months12=Array.from({length:12},(_,i)=>padM(i+1));
   const regsAno=DB.registros.filter(r=>r.indicadorId===ind.id&&r.data.slice(0,4)===String(ano)).sort((a,b)=>a.data.localeCompare(b.data));
   const dk=document.documentElement.getAttribute('data-theme')==='dark';
-  document.getElementById('chart-anual-title').textContent=`${ind.nome} — ${ano} (Anual)`;
+  // Indicador atrasado (mesma lógica compartilhada dos sparklines) — gráfico fica cinza
+  const {atrasado:anualAtrasado} = indEstaAtrasado(ind);
+  document.getElementById('chart-anual-title').textContent=`${anualAtrasado?'⚠️ ':''}${ind.nome} — ${ano} (Anual)`;
   if(chartAnual){chartAnual.destroy();chartAnual=null;}
   const ctx=document.getElementById('chartAnual').getContext('2d');
   const commonTooltip={backgroundColor:dk?'#1e293b':'#fff',borderColor:dk?'#334155':'#e2e8f0',borderWidth:1,titleColor:dk?'#e2e8f0':'#0f172a',bodyColor:dk?'#94a3b8':'#475569',padding:10};
@@ -1214,13 +1227,15 @@ function buildChartAnual(ind, ano) {
       return Math.round(mR.filter(r=>String(r.valor).toUpperCase()==='OK').length/mR.length*100);
     });
     const nokPct=okPct.map(v=>v!==null?100-v:null);
+    const corOk  = anualAtrasado ? 'rgba(148,163,184,.7)' : 'rgba(16,185,129,.85)';
+    const corNok = anualAtrasado ? 'rgba(100,116,139,.7)' : 'rgba(239,68,68,.85)';
     chartAnual=new Chart(ctx,{
       plugins:[ChartDataLabels],
       type:'bar',
       data:{labels:MNAMES,datasets:[
-        {label:'OK %',data:okPct,backgroundColor:'rgba(16,185,129,.85)',stack:'s',
+        {label:'OK %',data:okPct,backgroundColor:corOk,stack:'s',
           datalabels:{display:true,color:'#fff',font:{size:10,weight:'700'},anchor:'center',align:'center',formatter:v=>v!==null&&v>8?v+'%':''}},
-        {label:'NOK %',data:nokPct,backgroundColor:'rgba(239,68,68,.85)',stack:'s',
+        {label:'NOK %',data:nokPct,backgroundColor:corNok,stack:'s',
           datalabels:{display:true,color:'#fff',font:{size:10,weight:'700'},anchor:'center',align:'center',formatter:v=>v!==null&&v>8?v+'%':''}}
       ]},
       options:{responsive:true,maintainAspectRatio:false,onClick:onClickAnual,interaction:{mode:'index',intersect:false},
@@ -1251,6 +1266,7 @@ function buildChartAnual(ind, ano) {
     });
     const colors=months12.map((m,i)=>{
       if(vals[i]===null)return'rgba(100,116,139,.35)';
+      if(anualAtrasado) return 'rgba(148,163,184,.7)'; // cinza uniforme quando atrasado
       const mt=getMetaParaData(ind.id,`${ano}-${m}-15`);
       const st=getStatus(ind.tipoMeta,vals[i],mt?mt.valor:null);
       return st==='ok'?'rgba(16,185,129,.85)':st==='nok'?'rgba(239,68,68,.85)':'rgba(100,116,139,.6)';
@@ -1277,7 +1293,8 @@ function buildChartMensal(ind, ano, mes) {
   const regs=DB.registros.filter(r=>r.indicadorId===ind.id&&r.data.slice(0,4)===String(ano)&&r.data.slice(5,7)===mes).sort((a,b)=>a.data.localeCompare(b.data));
   const labels=regs.map(r=>r.data.slice(8));
   const dk=document.documentElement.getAttribute('data-theme')==='dark';
-  document.getElementById('chart-mensal-title').textContent=`${ind.nome} — ${MNAMES[parseInt(mes)-1]}/${ano}`;
+  const {atrasado:mensalAtrasado} = indEstaAtrasado(ind);
+  document.getElementById('chart-mensal-title').textContent=`${mensalAtrasado?'⚠️ ':''}${ind.nome} — ${MNAMES[parseInt(mes)-1]}/${ano}`;
   if(chartMensal){chartMensal.destroy();chartMensal=null;}
   const ctx=document.getElementById('chartMensal').getContext('2d');
   const metas=regs.map(r=>{const m=getMetaParaData(ind.id,r.data);return m?parseNum(m.valor):null;});
@@ -1300,8 +1317,8 @@ function buildChartMensal(ind, ano, mes) {
   };
 
   if(ind.tipoMeta==='ok-nok'){
-    // Colored bars: OK=green, NOK=red, same height
-    const bgColors=regs.map(r=>String(r.valor).toUpperCase()==='OK'?'rgba(16,185,129,.85)':'rgba(239,68,68,.85)');
+    // Colored bars: OK=green, NOK=red, same height (cinza uniforme se atrasado)
+    const bgColors=regs.map(r=> mensalAtrasado ? 'rgba(148,163,184,.7)' : (String(r.valor).toUpperCase()==='OK'?'rgba(16,185,129,.85)':'rgba(239,68,68,.85)'));
     chartMensal=new Chart(ctx,{
       plugins:[ChartDataLabels],
       type:'bar',
@@ -1319,7 +1336,11 @@ function buildChartMensal(ind, ano, mes) {
     });
   } else {
     const vals=regs.map(r=>{const v=parseNum(r.valor);return isNaN(v)?null:v;});
-    const colors=regs.map(r=>{const m=getMetaParaData(ind.id,r.data);const s=getStatus(ind.tipoMeta,r.valor,m?m.valor:null);return s==='ok'?'rgba(16,185,129,.8)':s==='nok'?'rgba(239,68,68,.8)':'rgba(100,116,139,.6)';});
+    const colors=regs.map(r=>{
+      if(mensalAtrasado) return 'rgba(148,163,184,.7)';
+      const m=getMetaParaData(ind.id,r.data);const s=getStatus(ind.tipoMeta,r.valor,m?m.valor:null);
+      return s==='ok'?'rgba(16,185,129,.8)':s==='nok'?'rgba(239,68,68,.8)':'rgba(100,116,139,.6)';
+    });
     chartMensal=new Chart(ctx,{
       plugins:[ChartDataLabels],
       type:'bar',
@@ -1344,6 +1365,11 @@ function drillDown(indId){
   const ind=DB.indicadores.find(i=>i.id===indId);if(!ind)return;
   document.getElementById('f-area').value=ind.areaId||'';onFilterAreaChange();
   document.getElementById('f-ind').value=indId;
+  // Ao clicar num sparkline, sempre mostra o último comentário disponível — não deixa
+  // o filtro de mês (se estiver numa data específica) esconder isso atrás do prompt
+  // "clique na barra". Mês/Ano voltam pra "Todos" pra garantir esse comportamento.
+  document.getElementById('f-mes').value='00';
+  document.getElementById('f-ano').value='0';
   dashDetailDate=null;renderDashboard();
   document.getElementById('charts-dual').scrollIntoView({behavior:'smooth'});
 }
@@ -1426,8 +1452,11 @@ function renderDetailTable(regs) {
     const area=ind?DB.areas.find(a=>a.id===ind.areaId):null;
     const meta=ind?getMetaParaData(ind.id,r.data):null;
     const st  =ind?getStatus(ind.tipoMeta,r.valor,meta?meta.valor:null):'nd';
-    const stBorderColor=st==='ok'?'#10b981':st==='nok'?'#ef4444':'var(--border)';
-    const stBg         =st==='ok'?'#064e3b22':st==='nok'?'#7f1d1d22':'transparent';
+    // Se o indicador desse registro está atrasado, a borda do card fica cinza também
+    // (mesma lógica compartilhada dos sparklines/gráficos) — não colorida por status.
+    const cardAtrasado = ind ? indEstaAtrasado(ind).atrasado : false;
+    const stBorderColor=cardAtrasado?'#6b7280':(st==='ok'?'#10b981':st==='nok'?'#ef4444':'var(--border)');
+    const stBg         =cardAtrasado?(document.documentElement.getAttribute('data-theme')==='dark'?'#37415122':'#f3f4f622'):(st==='ok'?'#064e3b22':st==='nok'?'#7f1d1d22':'transparent');
     // Header fields row
     const fields=[
       {lbl:'Data',   val:`<span style="font-family:monospace;font-weight:700">${fmtDate(r.data)}</span>`},
@@ -1467,7 +1496,7 @@ function exportCSV(){
   });
   const csv='\uFEFF'+[h.join(','),...rows].join('\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.0_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download=`PDM_KPI_v2.1_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
   showToast('CSV exportado!','success');
 }
 
